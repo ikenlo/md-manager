@@ -184,9 +184,7 @@ def price_list(session: Session, *, with_ids: bool = False, html: bool = False) 
             lines.append(f"\n<b>{escape(title)}</b>" if html else f"\n{title}:")
         prefix = f"#{s.id} " if with_ids else ""
         name = escape(s.name) if html else s.name
-        lines.append(
-            f"{prefix}{name} — {fmt_price(s.price_from, s.price_to)}, {s.duration_min} хв"
-        )
+        lines.append(f"{prefix}{name} — {fmt_price(s.price_from, s.price_to)}, {s.duration_min} хв")
     return "\n".join(lines).strip()
 
 

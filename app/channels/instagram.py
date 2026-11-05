@@ -46,6 +46,7 @@ class InboundText:
     sender_id: str
     mid: str
     text: str
+    ref: str | None = None  # мітка джерела: оголошення (ig_ad_<id>) або ref із посилання ig.me
 
 
 @dataclass(frozen=True)
@@ -88,11 +89,21 @@ def parse_events(payload: dict[str, Any]) -> list[Event]:
             if msg.get("is_echo") or sender == own_id or not sender:
                 continue
             if msg.get("text"):
-                events.append(InboundText(sender, mid, msg["text"]))
+                events.append(InboundText(sender, mid, msg["text"], _referral(item)))
             elif msg.get("attachments"):
                 kinds = tuple(str(a.get("type", "file")) for a in msg["attachments"])
                 events.append(InboundAttachment(sender, mid, kinds))
     return events
+
+
+def _referral(item: dict[str, Any]) -> str | None:
+    """Звідки прийшли в Direct: реклама (ad_id) або посилання ig.me/m/<акаунт>?ref=…"""
+    from app.clients import clean_label
+
+    ref = item.get("referral") or (item.get("message") or {}).get("referral") or {}
+    if ref.get("ad_id"):
+        return clean_label(f"ig_ad_{ref['ad_id']}")
+    return clean_label(ref.get("ref"))
 
 
 def split_text(text: str, limit: int = MAX_TEXT_BYTES) -> list[str]:
@@ -241,7 +252,7 @@ class InstagramHandler:
             return
 
         reply = await self.dialog.handle_inbound(
-            Channel.instagram, client_id, event.text, external_id=event.mid
+            Channel.instagram, client_id, event.text, external_id=event.mid, lead_source=event.ref
         )
         if reply:
             await self._reply(client_id, reply)

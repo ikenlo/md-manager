@@ -24,6 +24,7 @@ from app.db.models import (
     MasterService,
     Service,
 )
+from app.integrations.mds import MdsError
 from app.notify import Notifier
 from app.text import fmt_price, fmt_slot, normalize_phone
 
@@ -136,6 +137,8 @@ class ToolContext:
     conversation_id: int
     channel: Channel
     now: datetime
+    mds: Any = None  # MdsClient, якщо записи ведуться в MDS Connect
+    lead_source: str | None = None  # мітка посилання / реклами, з якої прийшов клієнт
     handed_off: bool = False
     bookings_created: list[int] = field(default_factory=list)
 
@@ -283,6 +286,9 @@ async def create_booking(
         return {"ok": False, "error": "slot_taken", "message": "Цей час уже зайнятий"}
     except bs.BookingError as e:
         raise ToolError(str(e)) from e
+    if ctx.lead_source:
+        with Session(ctx.engine) as s, s.begin():
+            s.get(Booking, booking.id).lead_source = ctx.lead_source
     ctx.bookings_created.append(booking.id)
     from app.channels.telegram import announce_booking
 
@@ -403,7 +409,12 @@ HANDLERS = {
 
 async def execute(ctx: ToolContext, name: str, args: dict[str, Any]) -> tuple[dict[str, Any], bool]:
     """Виконати інструмент. Повертає (результат, is_error)."""
-    handler = HANDLERS.get(name)
+    if ctx.mds is not None:
+        from app.agent import mds_tools
+
+        handler = mds_tools.HANDLERS.get(name)
+    else:
+        handler = HANDLERS.get(name)
     if handler is None:
         return {"error": f"Невідомий інструмент {name}"}, True
     try:
@@ -413,6 +424,9 @@ async def execute(ctx: ToolContext, name: str, args: dict[str, Any]) -> tuple[di
         return result, False
     except ToolError as e:
         return {"error": str(e)}, True
+    except MdsError as e:
+        log.warning("tool %s: MDS %s %s", name, e.status, e.code)
+        return {"error": e.message}, True
     except TypeError as e:  # неправильні аргументи від моделі
         return {"error": f"Неправильні параметри: {e}"}, True
     except Exception:

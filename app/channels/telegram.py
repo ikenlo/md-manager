@@ -13,7 +13,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 from aiogram import Bot, Dispatcher, F
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.filters.callback_data import CallbackData
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
@@ -430,20 +430,30 @@ client_router.filter("message", F.chat.type == "private")
 
 
 @client_router.message(CommandStart())
-async def cmd_start(message: Message, state: FSMContext, engine: Engine) -> None:
+async def cmd_start(
+    message: Message, state: FSMContext, engine: Engine, command: CommandObject
+) -> None:
     await state.clear()
     with Session(engine) as session, session.begin():
         client = cl.get_or_create_tg_client(
             session, message.from_user.id, message.from_user.first_name
         )
         conv = cl.get_conversation(session, client.id, Channel.telegram)
+        label = cl.clean_label(command.args)
+        if label:  # t.me/<бот>?start=<мітка> — звідки прийшов клієнт
+            conv.lead_source = label
         # Привітання вже каже, що це AI-помічник → у першій AI-відповіді не повторюємо.
         cl.add_message(session, conv, cl.MessageRole.assistant, GREETING)
     await message.answer(GREETING, reply_markup=ReplyKeyboardRemove())
 
 
 @client_router.message(Command("book"))
-async def cmd_book(message: Message, state: FSMContext, engine: Engine) -> None:
+async def cmd_book(message: Message, state: FSMContext, engine: Engine, settings: Settings) -> None:
+    if settings.mds_url:  # записи в MDS Connect — запис веде AI-помічник у чаті
+        await message.answer(
+            "Напишіть, на яку послугу й коли вам зручно — підберу вільний час і запишу 🙂"
+        )
+        return
     await start_booking(message, state, engine, mode="client")
 
 
@@ -580,6 +590,7 @@ def build_dispatcher(
     *,
     dialog: Any = None,
     clock: Clock = utcnow,
+    mds: Any = None,
 ) -> Dispatcher:
     from app.admin.commands import router as admin_router
 
@@ -590,6 +601,7 @@ def build_dispatcher(
     dp["dialog"] = dialog
     dp["clock"] = clock
     dp["usage"] = UsageReport()
+    dp["mds"] = mds
     dp.include_router(admin_router.build())
     dp.include_router(router.build())
     dp.include_router(client_router.build())

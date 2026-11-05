@@ -27,6 +27,11 @@ pytest
 uvicorn app.main:app --reload     # GET /health
 ```
 
+## Інтеграція з MDS Connect
+
+Записи, клієнти й гроші — у MDS Connect; AI-бот пише туди з міткою джерела, а звіт `/sources` бере
+звідти візити й виручку. Див. [docs/integration/README.md](docs/integration/README.md).
+
 ## Деплой
 
 Docker Compose + Caddy (HTTPS автоматично), щоденний зашифрований бекап SQLite.

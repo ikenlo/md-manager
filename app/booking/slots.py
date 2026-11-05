@@ -230,7 +230,6 @@ def find_free_slots(
 
     earliest = now.astimezone(UTC) + timedelta(minutes=min_lead_min)
     duration = timedelta(minutes=service.duration_min)
-    gap = timedelta(minutes=spread_gap_min)
 
     per_day: dict[date, dict[datetime, list[int]]] = defaultdict(lambda: defaultdict(list))
     d = date_from
@@ -240,6 +239,21 @@ def find_free_slots(
                 per_day[d][t].append(m.master_id)
         d += timedelta(days=1)
 
+    return pick_spread(per_day, duration, max_slots=max_slots, spread_gap_min=spread_gap_min)
+
+
+def pick_spread(
+    per_day: Mapping[date, Mapping[datetime, Sequence[int]]],
+    duration: timedelta,
+    *,
+    max_slots: int = 6,
+    spread_gap_min: int = 120,
+) -> list[Slot]:
+    """До max_slots слотів, розподілених по днях і в межах дня; результат — за часом.
+
+    per_day: день → {початок (UTC) → id майстрів, вільних у цей час}.
+    """
+    gap = timedelta(minutes=spread_gap_min)
     queues = {
         day: _spread_order(sorted(starts), gap) for day, starts in sorted(per_day.items()) if starts
     }

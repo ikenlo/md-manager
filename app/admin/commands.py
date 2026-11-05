@@ -45,7 +45,8 @@ HELP = """<b>Адмін-команди</b>
 /takeover &lt;діалог&gt; · /resume &lt;діалог&gt; · /reply &lt;діалог&gt; &lt;текст&gt;
 /pause_all · /resume_all — AI на всіх каналах
 /price — прайс · /stats — тиждень
-/client &lt;телефон|id&gt; · /forget &lt;телефон&gt;"""
+/client &lt;телефон|id&gt; · /forget &lt;телефон&gt;
+/link &lt;мітка&gt; — посилання для реклами · /sources [днів] — звідки записи й гроші"""
 
 
 class IsAdmin(Filter):
@@ -88,6 +89,92 @@ def _int_arg(command: CommandObject) -> int:
 
 async def _reply_error(message: Message, e: Exception) -> None:
     await message.answer(f"⚠️ {e}")
+
+
+class MdsMode(Filter):
+    async def __call__(self, event: TelegramObject, settings: Settings) -> bool:
+        return bool(settings.mds_url)
+
+
+MDS_OWNED = (
+    "today",
+    "tomorrow",
+    "day",
+    "book",
+    "cancel",
+    "move",
+    "noshow",
+    "done",
+    "dayoff",
+    "price",
+)
+
+
+@router.message(Command(*MDS_OWNED), MdsMode())
+async def cmd_in_mds(message: Message) -> None:
+    await message.answer(
+        "Записи, розклад і прайс ведуться в MDS Connect — відкрийте панель MDS. "
+        "Тут: /sources, /link, /stats, /takeover, /reply, /pause_all."
+    )
+
+
+@router.message(Command("link"))
+async def cmd_link(message: Message, command: CommandObject, settings: Settings) -> None:
+    label = cl.clean_label(command.args)
+    if not label:
+        await _reply_error(
+            message,
+            ParseError(
+                "Формат: /link <мітка>, лише латиниця, цифри, _ і -. Напр.: /link ig_reels_1201"
+            ),
+        )
+        return
+    username = settings.tg_bot_username
+    if not username:
+        try:
+            username = (await message.bot.me()).username
+        except Exception:  # noqa: BLE001
+            username = ""
+    tg = f"https://t.me/{username}?start={label}" if username else f"t.me/<бот>?start={label}"
+    await message.answer(
+        f"🔗 Посилання з міткою «{label}»\nTelegram: {tg}\n"
+        f"Instagram: додайте ?ref={label} до посилання ig.me/m/<ваш_акаунт>\n\n"
+        "Записи з цих посилань видно в /sources."
+    )
+
+
+@router.message(Command("sources"))
+async def cmd_sources(
+    message: Message,
+    command: CommandObject,
+    engine: Engine,
+    settings: Settings,
+    clock: Clock,
+    mds: Any = None,
+) -> None:
+    from app import marketing
+
+    arg = (command.args or "").strip()
+    days = int(arg) if arg.isdigit() and 0 < int(arg) <= 366 else 30
+    now = clock()
+    if mds is not None:
+        from app.integrations.mds import MdsError
+
+        d_to = now.astimezone(settings.zone).date()
+        d_from = d_to - timedelta(days=days - 1)
+        try:
+            visits = await mds.visits(d_from, d_to)
+            spend = (await mds.ad_spend(d_from, d_to))["total"]
+        except MdsError as e:
+            await _reply_error(message, ParseError(f"MDS Connect: {e.message}"))
+            return
+        await message.answer(
+            marketing.format_sources(marketing.aggregate_mds_visits(visits), days, spend)
+        )
+        return
+    with Session(engine) as session:
+        rows = marketing.aggregate_local(session, now - timedelta(days=days))
+    await message.answer(marketing.format_sources(rows, days))
 
 
 @router.message(Command("help", "admin"))

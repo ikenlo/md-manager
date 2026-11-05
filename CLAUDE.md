@@ -25,6 +25,11 @@ AI-адміністратор салону M&D: Instagram Direct + Telegram, з�
 - app/reminders.py + app/scheduler.py — нагадування, автоповернення AI, токен IG, чистка.
 - Тести Telegram — через справжній Dispatcher (tests/tg_harness.py), агента — FakeClaude.
 - Деплой і експлуатація — docs/RUNBOOK.md.
+- Інтеграція з MDS Connect (`ikenlo/m-d`) — docs/integration/README.md. Якщо задано MDS_URL/MDS_TOKEN,
+  записи живуть у MDS: інструменти агента — app/agent/mds_tools.py, клієнт — app/integrations/mds.py.
+  MDS працює в naive-часі Києва й копійках; конвертація — лише в MdsClient.
+- Мітки джерел: conversation.lead_source (з /start <мітка> або Instagram referral) → атрибуція запису;
+  звіт /sources — app/marketing.py.
 
 ## Команди
 - docker compose up -d — запуск
