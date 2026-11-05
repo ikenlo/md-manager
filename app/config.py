@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     admin_ids: list[int] = Field(default_factory=list)
 
     # Інфраструктура
+    public_url: str = ""  # https://bot.example.com → вебхуки; порожньо → long polling
     database_url: str = "sqlite:///./data/mds.db"
     tz: str = "Europe/Kyiv"
 
