@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from datetime import UTC, date, datetime, timedelta
+from html import escape
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
@@ -165,7 +166,7 @@ def set_day_off(session: Session, master: Master, d: date) -> list[Booking]:
     )
 
 
-def price_list(session: Session, *, with_ids: bool = False) -> str:
+def price_list(session: Session, *, with_ids: bool = False, html: bool = False) -> str:
     services = list(
         session.scalars(
             select(Service)
@@ -179,10 +180,12 @@ def price_list(session: Session, *, with_ids: bool = False) -> str:
     for s in services:
         if s.category != category:
             category = s.category
-            lines.append(f"\n<b>{category or 'Інше'}</b>")
+            title = category or "Інше"
+            lines.append(f"\n<b>{escape(title)}</b>" if html else f"\n{title}:")
         prefix = f"#{s.id} " if with_ids else ""
+        name = escape(s.name) if html else s.name
         lines.append(
-            f"{prefix}{s.name} — {fmt_price(s.price_from, s.price_to)}, {s.duration_min} хв"
+            f"{prefix}{name} — {fmt_price(s.price_from, s.price_to)}, {s.duration_min} хв"
         )
     return "\n".join(lines).strip()
 

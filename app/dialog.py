@@ -109,4 +109,4 @@ class Dialog:
             Channel.telegram, client_id, message.text, external_id=str(message.message_id)
         )
         if reply:
-            await message.answer(reply, parse_mode=None)
+            await message.answer(reply)

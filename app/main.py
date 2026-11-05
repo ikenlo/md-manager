@@ -9,8 +9,6 @@ from contextlib import asynccontextmanager
 from typing import Any
 
 from aiogram import Bot, Dispatcher
-from aiogram.client.default import DefaultBotProperties
-from aiogram.enums import ParseMode
 from aiogram.types import Update
 from fastapi import FastAPI, Request, Response
 
@@ -56,7 +54,7 @@ async def lifespan(app: FastAPI):  # noqa: ANN201
     state.dialog = Dialog(engine, agent, state.notifier)
 
     if settings.tg_bot_token:
-        bot = Bot(settings.tg_bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+        bot = Bot(settings.tg_bot_token)  # звичайний текст; HTML лише явно (довідка, прайс)
         state.bot = bot
         state.notifier.admin_sender = tg.admin_sender(bot, settings.tg_admin_chat_id)
         state.notifier.senders[Channel.telegram] = tg.telegram_sender(bot)

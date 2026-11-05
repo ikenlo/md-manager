@@ -313,3 +313,13 @@ async def test_free_text_goes_to_ai_agent(engine, salon, settings):
         "role": "user",
         "content": "Скільки коштує стрижка?",
     }
+
+
+async def test_html_in_names_is_safe(tg, engine, salon):
+    with Session(engine) as s, s.begin():
+        s.get(Service, salon["cut"].id).name = "Стрижка <M&D>"
+    await tg.send("/price", user_id=ADMIN_ID, chat_id=ADMIN_CHAT)
+    assert "Стрижка &lt;M&amp;D&gt;" in tg.last_text(ADMIN_CHAT)
+    await tg.send("/help", user_id=ADMIN_ID, chat_id=ADMIN_CHAT)
+    call = tg.session.calls[-1]
+    assert call.parse_mode == "HTML"

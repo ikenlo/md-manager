@@ -92,7 +92,7 @@ async def _reply_error(message: Message, e: Exception) -> None:
 
 @router.message(Command("help", "admin"))
 async def cmd_help(message: Message) -> None:
-    await message.answer(HELP)
+    await message.answer(HELP, parse_mode="HTML")
 
 
 # --- розклад -----------------------------------------------------------------
@@ -329,14 +329,16 @@ async def cmd_global_pause(message: Message, command: CommandObject, engine: Eng
 @router.message(Command("price"))
 async def cmd_price(message: Message, engine: Engine) -> None:
     with Session(engine) as session:
-        text = q.price_list(session)
+        text = q.price_list(session, html=True)
         kb = InlineKeyboardBuilder()
         for s in session.scalars(
             select(Service).where(Service.is_active.is_(True)).order_by(Service.name)
         ):
             kb.button(text=f"✏️ {s.name}", callback_data=PriceCb(id=s.id))
         kb.adjust(1)
-    await message.answer(text + "\n\nЗмінити ціну — кнопка нижче:", reply_markup=kb.as_markup())
+    await message.answer(
+        text + "\n\nЗмінити ціну — кнопка нижче:", reply_markup=kb.as_markup(), parse_mode="HTML"
+    )
 
 
 @router.callback_query(PriceCb.filter())

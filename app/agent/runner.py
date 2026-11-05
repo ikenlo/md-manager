@@ -77,7 +77,7 @@ def build_static_prompt(session: Session, channel: Channel) -> str:
     template = PROMPT_PATH.read_text(encoding="utf-8")
     return template.format(
         channel=CHANNEL_NAMES.get(channel, channel.value),
-        price_list=price_list(session).replace("<b>", "").replace("</b>", ""),
+        price_list=price_list(session),
         **{k: (v or "—") for k, v in values.items() if k != "price_list"},
     )
 
