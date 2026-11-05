@@ -21,9 +21,10 @@ class Settings(BaseSettings):
 
     # Інші моделі для дешевої генерації контенту (Gemini API, ai.google.dev)
     gemini_api_key: str = ""
-    gemini_text_model: str = ""  # масові тексти: варіанти підписів, оголошень, хештеги
-    gemini_image_model: str = ""  # картинки для постів і реклами
-    gemini_video_model: str = ""  # короткі відео (найдорожче — лише за кнопкою власника)
+    # Масові тексти: найдешевша модель для нових проєктів ($0.25 / $1.50 за 1M токенів, 11.2026)
+    gemini_text_model: str = "gemini-3.1-flash-lite"
+    # Картинки: ≈ $0.034 за 1K (11.2026)
+    gemini_image_model: str = "gemini-nano-banana-2.1"
     ai_monthly_budget_usd: float = 0.0  # 0 — без ліміту
 
     # Instagram

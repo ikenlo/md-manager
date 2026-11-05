@@ -35,15 +35,21 @@ class FakeGemini:
             return httpx.Response(self.status, json={"error": {"message": "quota exceeded"}})
         if self.body is not None:
             return httpx.Response(200, json=self.body)
-        if "image" in request.url.path:
-            return httpx.Response(200, json={"candidates": [{"content": {"parts": [
-                {"text": "Ось фото"},
-                {"inlineData": {"mimeType": "image/png", "data": base64.b64encode(PNG).decode()}},
-            ]}}]})  # fmt: skip
+        body = json.loads(request.content)
+        if body.get("response_format", {}).get("type") == "image":
+            return httpx.Response(200, json={"status": "completed", "steps": [
+                {"type": "model_output", "content": [
+                    {"type": "text", "text": "Ось фото"},
+                    {"type": "image", "mime_type": "image/jpeg",
+                     "data": base64.b64encode(PNG).decode()},
+                ]}]})  # fmt: skip
         return httpx.Response(200, json={
-            "candidates": [{"content": {"parts": [{"text": "1. Варіант один\n2. Варіант два"}]}}],
-            "usageMetadata": {"promptTokenCount": 1000, "candidatesTokenCount": 200,
-                              "thoughtsTokenCount": 50},
+            "status": "completed",
+            "usage": {"total_input_tokens": 1000, "total_output_tokens": 200,
+                      "total_thought_tokens": 50},
+            "steps": [{"type": "thought", "signature": "x"},
+                      {"type": "model_output", "content": [
+                          {"type": "text", "text": "1. Варіант один\n2. Варіант два"}]}],
         })  # fmt: skip
 
     def body_of(self, i=-1):
@@ -77,11 +83,13 @@ async def test_bulk_text_goes_to_gemini_and_is_costed(engine, settings, fake):
     out = await make_router(engine, settings, fake).bulk_text("5 підписів до Reels про фарбування")
     assert out.provider == "gemini" and out.text.startswith("1. Варіант один")
     req = fake.requests[0]
-    assert req.url.path == "/v1beta/models/gem-text:generateContent"
+    assert req.url.path == "/v1beta/interactions"
     assert req.headers["x-goog-api-key"] == "g-key"
+    assert req.headers["Api-Revision"] == "2026-05-20"
     body = fake.body_of()
-    assert "5 підписів до Reels" in body["contents"][0]["parts"][0]["text"]
-    assert "M&D" in body["contents"][0]["parts"][0]["text"]
+    assert body["model"] == "gem-text" and body["store"] is False
+    assert "5 підписів до Reels" in body["input"] and "M&D" in body["input"]
+    assert body["generation_config"]["max_output_tokens"] == 4096
     with Session(engine) as s:
         row = s.scalar(select(AiUsage))
         assert (row.provider, row.kind, row.input_tokens, row.output_tokens) == (
@@ -128,9 +136,10 @@ async def test_budget_blocks_calls(engine, settings, fake):
 
 async def test_image_generation(engine, settings, fake):
     img, cost = await make_router(engine, settings, fake).image("нюдовий манікюр")
-    assert img.data == PNG and img.mime_type == "image/png" and cost == 0.04
+    assert img.data == PNG and img.mime_type == "image/jpeg" and cost == 0.04
     body = fake.body_of()
-    assert body["generationConfig"]["responseModalities"] == ["TEXT", "IMAGE"]
+    assert body["response_format"] == {"type": "image", "mime_type": "image/jpeg",
+                                       "aspect_ratio": "4:5", "image_size": "1K"}  # fmt: skip
     with Session(engine) as s:
         row = s.scalar(select(AiUsage))
         assert (row.kind, row.units, row.cost_usd) == ("image", 1, 0.04)
@@ -140,9 +149,17 @@ async def test_gemini_errors(engine, settings):
     with pytest.raises(GeminiError) as e:
         await make_router(engine, settings, FakeGemini(status=429)).bulk_text("x")
     assert e.value.status == 429 and "quota" in e.value.message
-    blocked = FakeGemini(body={"promptFeedback": {"blockReason": "SAFETY"}})
-    with pytest.raises(GeminiError, match="SAFETY"):
-        await make_router(engine, settings, blocked).bulk_text("x")
+    failed = FakeGemini(body={"status": "failed", "steps": []})
+    with pytest.raises(GeminiError, match="failed"):
+        await make_router(engine, settings, failed).bulk_text("x")
+    empty = FakeGemini(body={"status": "completed", "steps": [{"type": "thought"}]})
+    with pytest.raises(GeminiError, match="порожню"):
+        await make_router(engine, settings, empty).bulk_text("x")
+
+
+def test_default_models_are_priced():
+    s = Settings(_env_file=None)
+    assert s.gemini_text_model in prices.TEXT and s.gemini_image_model in prices.IMAGE
 
 
 def test_unknown_model_priced_high():
