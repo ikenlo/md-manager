@@ -46,7 +46,9 @@ HELP = """<b>Адмін-команди</b>
 /pause_all · /resume_all — AI на всіх каналах
 /price — прайс · /stats — тиждень
 /client &lt;телефон|id&gt; · /forget &lt;телефон&gt;
-/link &lt;мітка&gt; — посилання для реклами · /sources [днів] — звідки записи й гроші"""
+/link &lt;мітка&gt; — посилання для реклами · /sources [днів] — звідки записи й гроші
+/gen &lt;завдання&gt; — тексти (дешева модель) · /image &lt;опис&gt; — картинка
+/budget — витрати на AI за місяць"""
 
 
 class IsAdmin(Filter):
@@ -175,6 +177,84 @@ async def cmd_sources(
     with Session(engine) as session:
         rows = marketing.aggregate_local(session, now - timedelta(days=days))
     await message.answer(marketing.format_sources(rows, days))
+
+
+@router.message(Command("gen"))
+async def cmd_gen(message: Message, command: CommandObject, ai: Any = None) -> None:
+    from app.ai.budget import BudgetExceeded
+    from app.ai.gemini import GeminiError
+    from app.ai.router import AiUnavailable
+
+    task = (command.args or "").strip()
+    if not task:
+        await _reply_error(
+            message, ParseError("Формат: /gen 5 варіантів підпису до Reels про фарбування")
+        )
+        return
+    if ai is None:
+        await message.answer("AI-генерація не налаштована")
+        return
+    try:
+        out = await ai.bulk_text(task)
+    except (BudgetExceeded, AiUnavailable) as e:
+        await _reply_error(message, e)
+        return
+    except GeminiError as e:
+        await _reply_error(message, ParseError(f"Gemini: {e.message}"))
+        return
+    for i in range(0, len(out.text), 3800):
+        await message.answer(out.text[i : i + 3800])
+    await message.answer(f"— {out.model}, ≈ ${out.cost_usd:.4f}")
+
+
+@router.message(Command("image"))
+async def cmd_image(message: Message, command: CommandObject, ai: Any = None) -> None:
+    from aiogram.types import BufferedInputFile
+
+    from app.ai.budget import BudgetExceeded
+    from app.ai.gemini import GeminiError
+    from app.ai.router import AiUnavailable
+
+    desc = (command.args or "").strip()
+    if not desc:
+        await _reply_error(
+            message, ParseError("Формат: /image манікюр нюд крупним планом, тепле світло")
+        )
+        return
+    if ai is None:
+        await message.answer("AI-генерація не налаштована")
+        return
+    try:
+        img, cost = await ai.image(desc)
+    except (BudgetExceeded, AiUnavailable) as e:
+        await _reply_error(message, e)
+        return
+    except GeminiError as e:
+        await _reply_error(message, ParseError(f"Gemini: {e.message}"))
+        return
+    ext = "jpg" if "jpeg" in img.mime_type else "png"
+    await message.answer_photo(
+        BufferedInputFile(img.data, filename=f"md.{ext}"), caption=f"≈ ${cost:.3f}"
+    )
+
+
+@router.message(Command("budget"))
+async def cmd_budget(
+    message: Message, engine: Engine, settings: Settings, clock: Clock, usage: Any = None
+) -> None:
+    from app.ai.budget import month_start
+
+    since = month_start(clock(), settings.zone)
+    with Session(engine) as session:
+        rows = usage.by_provider(session, since) if usage else []
+    total = sum(r[3] for r in rows)
+    lines = ["💸 AI за цей місяць"]
+    lines += [f"• {p} / {k}: {n} викл., ${c:.2f}" for p, k, n, c in rows] or ["Витрат ще немає"]
+    limit = settings.ai_monthly_budget_usd
+    lines.append(
+        f"Разом: ${total:.2f}" + (f" з ${limit:.2f}" if limit > 0 else " (ліміт не задано)")
+    )
+    await message.answer("\n".join(lines))
 
 
 @router.message(Command("help", "admin"))

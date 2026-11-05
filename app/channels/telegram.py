@@ -591,6 +591,7 @@ def build_dispatcher(
     dialog: Any = None,
     clock: Clock = utcnow,
     mds: Any = None,
+    ai: Any = None,
 ) -> Dispatcher:
     from app.admin.commands import router as admin_router
 
@@ -602,6 +603,7 @@ def build_dispatcher(
     dp["clock"] = clock
     dp["usage"] = UsageReport()
     dp["mds"] = mds
+    dp["ai"] = ai
     dp.include_router(admin_router.build())
     dp.include_router(router.build())
     dp.include_router(client_router.build())

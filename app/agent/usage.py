@@ -1,4 +1,4 @@
-"""Облік токенів і вартості викликів Claude."""
+"""Облік токенів і вартості викликів AI (Claude, Gemini)."""
 
 from __future__ import annotations
 
@@ -7,38 +7,48 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.ai import prices
 from app.db.models import AiUsage
 
-# $ за 1 млн токенів (вхід, вихід) для промптів до 100K. Перевіряйте актуальні ціни.
-PRICES: dict[str, tuple[float, float]] = {
-    "claude-haiku-5-5": (0.10, 0.50),
-    "claude-sonnet-5-5": (2.00, 10.00),
-}
-CACHE_READ_MULT = 0.1
-CACHE_WRITE_MULT = 1.25
+# Сумісність зі старим кодом/тестами
+PRICES = prices.TEXT
+cost_usd = prices.text_cost
 
 
-def cost_usd(model: str, inp: int, out: int, cache_read: int = 0, cache_write: int = 0) -> float:
-    price_in, price_out = PRICES.get(model, PRICES["claude-sonnet-5-5"])
-    return (
-        inp * price_in
-        + out * price_out
-        + cache_read * price_in * CACHE_READ_MULT
-        + cache_write * price_in * CACHE_WRITE_MULT
-    ) / 1_000_000
-
-
-def record(session: Session, conversation_id: int | None, model: str, usage: object) -> None:
-    session.add(
-        AiUsage(
-            conversation_id=conversation_id,
-            model=model,
-            input_tokens=getattr(usage, "input_tokens", 0) or 0,
-            output_tokens=getattr(usage, "output_tokens", 0) or 0,
-            cache_read_tokens=getattr(usage, "cache_read_input_tokens", 0) or 0,
-            cache_write_tokens=getattr(usage, "cache_creation_input_tokens", 0) or 0,
-        )
+def record(
+    session: Session,
+    conversation_id: int | None,
+    model: str,
+    usage: object,
+    *,
+    provider: str = "anthropic",
+    kind: str = "chat",
+) -> AiUsage:
+    inp = getattr(usage, "input_tokens", 0) or 0
+    out = getattr(usage, "output_tokens", 0) or 0
+    cr = getattr(usage, "cache_read_input_tokens", 0) or 0
+    cw = getattr(usage, "cache_creation_input_tokens", 0) or 0
+    row = AiUsage(
+        conversation_id=conversation_id,
+        provider=provider,
+        kind=kind,
+        model=model,
+        input_tokens=inp,
+        output_tokens=out,
+        cache_read_tokens=cr,
+        cache_write_tokens=cw,
+        cost_usd=prices.text_cost(model, inp, out, cr, cw),
     )
+    session.add(row)
+    return row
+
+
+def record_units(
+    session: Session, *, provider: str, kind: str, model: str, units: int, cost: float
+) -> AiUsage:
+    row = AiUsage(provider=provider, kind=kind, model=model, units=units, cost_usd=cost)
+    session.add(row)
+    return row
 
 
 class UsageReport:
@@ -46,15 +56,18 @@ class UsageReport:
 
     @staticmethod
     def cost_since(session: Session, since: datetime) -> float:
-        rows = session.execute(
-            select(
-                AiUsage.model,
-                func.sum(AiUsage.input_tokens),
-                func.sum(AiUsage.output_tokens),
-                func.sum(AiUsage.cache_read_tokens),
-                func.sum(AiUsage.cache_write_tokens),
-            )
-            .where(AiUsage.created_at >= since)
-            .group_by(AiUsage.model)
+        return float(
+            session.scalar(select(func.sum(AiUsage.cost_usd)).where(AiUsage.created_at >= since))
+            or 0.0
         )
-        return sum(cost_usd(m, i or 0, o or 0, r or 0, w or 0) for m, i, o, r, w in rows)
+
+    @staticmethod
+    def by_provider(session: Session, since: datetime) -> list[tuple[str, str, int, float]]:
+        """(провайдер, вид, кількість викликів, $) — для /budget."""
+        rows = session.execute(
+            select(AiUsage.provider, AiUsage.kind, func.count(), func.sum(AiUsage.cost_usd))
+            .where(AiUsage.created_at >= since)
+            .group_by(AiUsage.provider, AiUsage.kind)
+            .order_by(func.sum(AiUsage.cost_usd).desc())
+        )
+        return [(p, k, n, float(c or 0)) for p, k, n, c in rows]

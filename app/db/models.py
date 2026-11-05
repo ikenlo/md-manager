@@ -9,6 +9,7 @@ from sqlalchemy import (
     Boolean,
     Date,
     Enum,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -228,9 +229,15 @@ class AiUsage(Base):
     conversation_id: Mapped[int | None] = mapped_column(
         ForeignKey("conversations.id", ondelete="SET NULL"), index=True
     )
+    provider: Mapped[str] = mapped_column(String(16), default="anthropic")  # anthropic | gemini
+    kind: Mapped[str] = mapped_column(String(16), default="chat")  # chat | text | image | video
     model: Mapped[str] = mapped_column(String(64))
     input_tokens: Mapped[int] = mapped_column(Integer, default=0)
     output_tokens: Mapped[int] = mapped_column(Integer, default=0)
     cache_read_tokens: Mapped[int] = mapped_column(Integer, default=0)
     cache_write_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    units: Mapped[int] = mapped_column(Integer, default=0)  # картинки або секунди відео
+    cost_usd: Mapped[float] = mapped_column(
+        Float, default=0.0
+    )  # оцінка за прайсом на момент виклику
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)

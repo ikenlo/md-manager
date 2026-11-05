@@ -30,6 +30,8 @@ AI-адміністратор салону M&D: Instagram Direct + Telegram, з�
   MDS працює в naive-часі Києва й копійках; конвертація — лише в MdsClient.
 - Мітки джерел: conversation.lead_source (з /start <мітка> або Instagram referral) → атрибуція запису;
   звіт /sources — app/marketing.py.
+- AI для контенту — app/ai/: router.py (Gemini для масових текстів/картинок, Claude — аналіз),
+  gemini.py (REST), prices.py, budget.py (місячний ліміт). Кожен платний виклик → ai_usage з cost_usd.
 
 ## Команди
 - docker compose up -d — запуск

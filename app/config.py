@@ -19,6 +19,13 @@ class Settings(BaseSettings):
     ai_max_tool_calls: int = 8
     ai_history_messages: int = 20
 
+    # Інші моделі для дешевої генерації контенту (Gemini API, ai.google.dev)
+    gemini_api_key: str = ""
+    gemini_text_model: str = ""  # масові тексти: варіанти підписів, оголошень, хештеги
+    gemini_image_model: str = ""  # картинки для постів і реклами
+    gemini_video_model: str = ""  # короткі відео (найдорожче — лише за кнопкою власника)
+    ai_monthly_budget_usd: float = 0.0  # 0 — без ліміту
+
     # Instagram
     ig_access_token: str = ""
     ig_app_secret: str = ""

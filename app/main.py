@@ -58,6 +58,15 @@ async def lifespan(app: FastAPI):  # noqa: ANN201
     else:
         log.warning("ANTHROPIC_API_KEY not set — AI disabled, messages go to admins")
     state.dialog = Dialog(engine, agent, state.notifier)
+    from app.ai.gemini import GeminiClient
+    from app.ai.router import AiRouter
+
+    ai = AiRouter(
+        engine,
+        settings,
+        gemini=GeminiClient(settings.gemini_api_key) if settings.gemini_api_key else None,
+        claude=make_client(settings) if settings.anthropic_api_key else None,
+    )
 
     if settings.tg_bot_token:
         bot = Bot(settings.tg_bot_token)  # звичайний текст; HTML лише явно (довідка, прайс)
@@ -65,7 +74,7 @@ async def lifespan(app: FastAPI):  # noqa: ANN201
         state.notifier.admin_sender = tg.admin_sender(bot, settings.tg_admin_chat_id)
         state.notifier.senders[Channel.telegram] = tg.telegram_sender(bot)
         state.dp = tg.build_dispatcher(
-            engine, settings, state.notifier, dialog=state.dialog, mds=mds
+            engine, settings, state.notifier, dialog=state.dialog, mds=mds, ai=ai
         )
         if settings.public_url:
             await bot.set_webhook(
