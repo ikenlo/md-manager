@@ -1,5 +1,5 @@
-"""Фонові задачі (APScheduler): оновлення токена Instagram (тут і далі — етап 6:
-нагадування, автоповернення AI, чистка історії)."""
+"""Фонові задачі (APScheduler): нагадування, автоповернення AI після handoff,
+оновлення токена Instagram, чистка старої переписки."""
 
 from __future__ import annotations
 
@@ -9,7 +9,10 @@ from datetime import UTC, datetime
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import Engine
+from sqlalchemy.orm import Session
 
+from app import clients as cl
+from app import reminders
 from app.channels.instagram import InstagramClient
 from app.config import Settings
 from app.notify import Notifier
@@ -44,8 +47,29 @@ class Jobs:
                 "в Direct (через 60 днів від останнього оновлення). Перевірте апку в Meta."
             )
 
+    async def reminders(self) -> None:
+        await reminders.send_due_reminders(self.engine, self.settings, self.notifier, self.clock())
+
+    async def auto_resume(self) -> None:
+        with Session(self.engine) as s, s.begin():
+            ids = cl.auto_resume_stale(s, self.settings.handoff_auto_resume_hours, self.clock())
+        for cid in ids:
+            await self.notifier.admin(
+                f"🤖 Діалог #{cid}: {self.settings.handoff_auto_resume_hours} год тиші — "
+                "AI знову відповідає"
+            )
+
+    async def cleanup(self) -> None:
+        n = reminders.cleanup_old_messages(self.engine, self.clock())
+        if n:
+            log.info("cleanup: removed %s old messages", n)
+
     def start(self) -> AsyncIOScheduler:
         sched = AsyncIOScheduler(timezone="UTC")
+        sched.add_job(self.reminders, "interval", minutes=1, id="reminders",
+                      max_instances=1, coalesce=True)  # fmt: skip
+        sched.add_job(self.auto_resume, "interval", minutes=10, id="auto_resume")
+        sched.add_job(self.cleanup, "cron", hour=3, minute=17, id="cleanup")
         sched.add_job(self.refresh_ig_token, "interval", hours=12, id="ig_token",
                       next_run_time=self.clock())  # fmt: skip
         sched.start()
