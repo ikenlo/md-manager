@@ -177,3 +177,10 @@ def forget_client(session: Session, client: Client) -> None:
     session.execute(delete(Booking).where(Booking.client_id == client.id))
     session.delete(client)
     session.flush()
+
+
+def get_conversation_by_id(session: Session, conversation_id: int) -> Conversation:
+    conv = session.get(Conversation, conversation_id)
+    if conv is None:
+        raise LookupError(f"conversation {conversation_id} not found")
+    return conv

@@ -32,6 +32,7 @@ from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
 from app import clients as cl
+from app.agent.usage import UsageReport
 from app.booking import service as bs
 from app.channels.registry import HandlerRegistry
 from app.config import Settings
@@ -432,7 +433,12 @@ client_router.filter("message", F.chat.type == "private")
 async def cmd_start(message: Message, state: FSMContext, engine: Engine) -> None:
     await state.clear()
     with Session(engine) as session, session.begin():
-        cl.get_or_create_tg_client(session, message.from_user.id, message.from_user.first_name)
+        client = cl.get_or_create_tg_client(
+            session, message.from_user.id, message.from_user.first_name
+        )
+        conv = cl.get_conversation(session, client.id, Channel.telegram)
+        # Привітання вже каже, що це AI-помічник → у першій AI-відповіді не повторюємо.
+        cl.add_message(session, conv, cl.MessageRole.assistant, GREETING)
     await message.answer(GREETING, reply_markup=ReplyKeyboardRemove())
 
 
@@ -583,6 +589,7 @@ def build_dispatcher(
     dp["notifier"] = notifier
     dp["dialog"] = dialog
     dp["clock"] = clock
+    dp["usage"] = UsageReport()
     dp.include_router(admin_router.build())
     dp.include_router(router.build())
     dp.include_router(client_router.build())

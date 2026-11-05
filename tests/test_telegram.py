@@ -295,3 +295,21 @@ async def test_admin_stats(tg, engine, salon):
     make_booking(engine, salon, kyiv(TOMORROW, 10))
     await tg.send("/stats", user_id=ADMIN_ID, chat_id=ADMIN_CHAT)
     assert "Нових записів: 1" in tg.last_text(ADMIN_CHAT)
+
+
+async def test_free_text_goes_to_ai_agent(engine, salon, settings):
+    from app.agent.runner import Agent
+    from app.dialog import Dialog
+    from tests.fake_claude import FakeClaude, response, text
+
+    claude = FakeClaude(response(text("Стрижка — 600 грн.")))
+    tg = TG(engine, settings, clock=lambda: NOW)
+    tg.dp["dialog"] = Dialog(engine, Agent(claude, engine, settings, tg.notifier), tg.notifier,
+                             clock=lambda: NOW)  # fmt: skip
+    await tg.send("/start")
+    await tg.send("Скільки коштує стрижка?")
+    assert tg.last_text(CLIENT_ID) == "Стрижка — 600 грн."  # без повтору «я AI» після /start
+    assert claude.requests[0]["messages"][0] == {
+        "role": "user",
+        "content": "Скільки коштує стрижка?",
+    }

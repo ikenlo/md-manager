@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     # AI
     anthropic_api_key: str = ""
     ai_model: str = "claude-haiku-5-5"
+    ai_effort: str = "medium"  # low | medium | high
+    ai_timeout_s: float = 30.0
+    ai_max_tool_calls: int = 8
+    ai_history_messages: int = 20
 
     # Instagram
     ig_access_token: str = ""
