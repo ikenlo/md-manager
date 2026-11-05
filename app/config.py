@@ -1,10 +1,11 @@
 """Налаштування з .env. Секрети читаються лише тут."""
 
 from functools import lru_cache
+from typing import Annotated
 from zoneinfo import ZoneInfo
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -27,7 +28,7 @@ class Settings(BaseSettings):
     tg_bot_token: str = ""
     tg_admin_chat_id: int = 0
     tg_webhook_secret: str = ""
-    admin_ids: list[int] = Field(default_factory=list)
+    admin_ids: Annotated[list[int], NoDecode] = Field(default_factory=list)
 
     # Інфраструктура
     public_url: str = ""  # https://bot.example.com → вебхуки; порожньо → long polling
@@ -49,6 +50,11 @@ class Settings(BaseSettings):
         if isinstance(v, int):
             return [v]
         return v
+
+    @field_validator("tg_admin_chat_id", mode="before")
+    @classmethod
+    def _empty_int(cls, v: object) -> object:
+        return 0 if v == "" else v
 
     @property
     def zone(self) -> ZoneInfo:

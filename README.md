@@ -13,7 +13,7 @@ AI-адміністратор салону M&D: Instagram Direct і Telegram, з
 | 4 | AI-агент | ✅ |
 | 5 | Instagram | ✅ |
 | 6 | Нагадування і handoff | ✅ |
-| 7 | Деплой | — |
+| 7 | Деплой | ✅ (код; запуск на VPS — docs/RUNBOOK.md) |
 
 ## Локальний запуск
 
@@ -26,3 +26,8 @@ python seed.py                    # приклад даних — замініт
 pytest
 uvicorn app.main:app --reload     # GET /health
 ```
+
+## Деплой
+
+Docker Compose + Caddy (HTTPS автоматично), щоденний зашифрований бекап SQLite.
+Покроково — [docs/RUNBOOK.md](docs/RUNBOOK.md).

@@ -1,4 +1,12 @@
+# HTTPS-сертифікат Caddy отримує автоматично (Let's Encrypt). DOMAIN — з .env.
 {$DOMAIN} {
 	encode gzip
-	reverse_proxy app:8000
+	# Назовні — лише вебхуки та health; решта 404.
+	@public path /webhook/* /health
+	handle @public {
+		reverse_proxy app:8000
+	}
+	handle {
+		respond 404
+	}
 }

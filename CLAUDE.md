@@ -18,6 +18,14 @@ AI-адміністратор салону M&D: Instagram Direct + Telegram, з�
   `write_transaction()` (SQLite: BEGIN IMMEDIATE).
 - app/db/types.py — UTCDateTime: naive datetime на вході → помилка.
 
+- app/dialog.py — вхідне повідомлення будь-якого каналу → пауза/handoff/агент.
+- app/agent/ — runner.py (цикл Claude + tool use), tools.py (7 інструментів), usage.py.
+- app/channels/ — telegram.py (aiogram; хендлери через registry.py), instagram.py.
+- app/admin/ — commands.py (хендлери), queries.py (логіка, тестується окремо).
+- app/reminders.py + app/scheduler.py — нагадування, автоповернення AI, токен IG, чистка.
+- Тести Telegram — через справжній Dispatcher (tests/tg_harness.py), агента — FakeClaude.
+- Деплой і експлуатація — docs/RUNBOOK.md.
+
 ## Команди
 - docker compose up -d — запуск
 - pytest — тести
