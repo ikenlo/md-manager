@@ -241,3 +241,37 @@ class AiUsage(Base):
         Float, default=0.0
     )  # оцінка за прайсом на момент виклику
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)
+
+
+class MetricDaily(Base):
+    """Щоденна метрика з зовнішнього джерела (Instagram, Facebook, Google, TikTok)."""
+
+    __tablename__ = "metric_daily"
+    __table_args__ = (UniqueConstraint("day", "source", "metric"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    day: Mapped[date] = mapped_column(Date, index=True)  # київська дата
+    source: Mapped[str] = mapped_column(String(32))  # instagram | facebook | google | tiktok
+    metric: Mapped[str] = mapped_column(String(64))  # reach, views, profile_links_taps, ...
+    value: Mapped[float] = mapped_column(Float, default=0.0)
+    fetched_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class AdDaily(Base):
+    """Результати оголошення за день (Meta Ads). Гроші — у валюті рекламного акаунта, копійки."""
+
+    __tablename__ = "ad_daily"
+    __table_args__ = (UniqueConstraint("day", "platform", "ad_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    day: Mapped[date] = mapped_column(Date, index=True)
+    platform: Mapped[str] = mapped_column(String(16), default="meta")
+    ad_id: Mapped[str] = mapped_column(String(64))
+    ad_name: Mapped[str] = mapped_column(String(200), default="")
+    campaign_name: Mapped[str] = mapped_column(String(200), default="")
+    impressions: Mapped[int] = mapped_column(Integer, default=0)
+    reach: Mapped[int] = mapped_column(Integer, default=0)
+    clicks: Mapped[int] = mapped_column(Integer, default=0)
+    spend_minor: Mapped[int] = mapped_column(Integer, default=0)
+    conversations: Mapped[int] = mapped_column(Integer, default=0)  # розпочаті діалоги в Direct
+    fetched_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)

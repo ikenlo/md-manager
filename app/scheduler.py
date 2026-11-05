@@ -6,6 +6,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Any
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import Engine
@@ -28,12 +29,14 @@ class Jobs:
         notifier: Notifier,
         ig: InstagramClient | None = None,
         clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        meta: Any = None,
     ) -> None:
         self.engine = engine
         self.settings = settings
         self.notifier = notifier
         self.ig = ig
         self.clock = clock
+        self.meta = meta  # MetaClient: щоденна аналітика Instagram і реклами
 
     async def refresh_ig_token(self) -> None:
         if self.ig is None or not self.ig.token():
@@ -61,6 +64,22 @@ class Jobs:
                 "AI знову відповідає"
             )
 
+    async def collect_meta(self) -> None:
+        if self.meta is None:
+            return
+        from app.analytics.meta import MetaError, collect
+
+        try:
+            stats = await collect(
+                self.engine, self.meta, today=self.clock().astimezone(self.settings.zone).date(),
+                tz=self.settings.zone, ig_user_id=self.settings.meta_ig_user_id,
+                ad_account_id=self.settings.meta_ad_account_id,
+            )  # fmt: skip
+            log.info("meta collected: %s", stats)
+        except MetaError as e:
+            log.error("meta collect failed: %s", e.status)
+            await self.notifier.admin(f"⚠️ Не вдалося зібрати аналітику Meta: {e.message}")
+
     async def cleanup(self) -> None:
         n = reminders.cleanup_old_messages(self.engine, self.clock())
         if n:
@@ -72,6 +91,8 @@ class Jobs:
                       max_instances=1, coalesce=True)  # fmt: skip
         sched.add_job(self.auto_resume, "interval", minutes=10, id="auto_resume")
         sched.add_job(self.cleanup, "cron", hour=3, minute=17, id="cleanup")
+        sched.add_job(self.collect_meta, "cron", hour=6, minute=30, id="meta",
+                      timezone=self.settings.tz)  # fmt: skip
         sched.add_job(self.refresh_ig_token, "interval", hours=12, id="ig_token",
                       next_run_time=self.clock())  # fmt: skip
         sched.start()

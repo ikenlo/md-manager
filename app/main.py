@@ -12,6 +12,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.types import Update
 from fastapi import FastAPI, Request, Response
 
+from app import panel
 from app.agent.runner import Agent, make_client
 from app.channels import instagram as ig
 from app.channels import telegram as tg
@@ -32,6 +33,7 @@ class AppState:
     bot: Bot | None = None
     dp: Dispatcher | None = None
     ig_handler: ig.InstagramHandler | None = None
+    mds: Any = None
     tasks: list[asyncio.Task[Any]]
 
 
@@ -101,7 +103,13 @@ async def lifespan(app: FastAPI):  # noqa: ANN201
     else:
         log.warning("IG_APP_SECRET not set — Instagram disabled")
 
-    scheduler = Jobs(engine, settings, state.notifier, ig_client).start()
+    meta = None
+    if settings.meta_token:
+        from app.analytics.meta import MetaClient
+
+        meta = MetaClient(settings.meta_token, settings.meta_api_version)
+    state.mds = mds
+    scheduler = Jobs(engine, settings, state.notifier, ig_client, meta=meta).start()
 
     yield
 
@@ -123,6 +131,17 @@ async def _process_instagram(events: list[ig.Event]) -> None:
 
 
 app.include_router(ig.build_router(lambda: state.settings, _process_instagram))
+
+
+async def _dashboard():  # noqa: ANN202
+    from datetime import UTC, datetime
+
+    from app.analytics.dashboard import build
+
+    return await build(get_engine(), state.settings, datetime.now(UTC), mds=state.mds)
+
+
+app.include_router(panel.build_router(lambda: state.settings, _dashboard))
 
 
 @app.get("/health")

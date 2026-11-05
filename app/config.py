@@ -27,6 +27,16 @@ class Settings(BaseSettings):
     gemini_image_model: str = "gemini-nano-banana-2.1"
     ai_monthly_budget_usd: float = 0.0  # 0 — без ліміту
 
+    # Meta Graph API: аналітика Instagram/Facebook і реклама (токен System User з Business Manager)
+    meta_api_version: str = "v26.0"
+    meta_token: str = ""
+    meta_ig_user_id: str = ""  # Instagram professional account ID
+    meta_ad_account_id: str = ""  # без префікса act_
+    ad_currency: str = "UAH"
+
+    # Панель власника /panel (вхід за паролем)
+    panel_password: str = ""
+
     # Instagram
     ig_access_token: str = ""
     ig_app_secret: str = ""

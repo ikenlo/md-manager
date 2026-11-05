@@ -2,7 +2,7 @@
 {$DOMAIN} {
 	encode gzip
 	# Назовні — лише вебхуки та health; решта 404.
-	@public path /webhook/* /health
+	@public path /webhook/* /health /panel /panel/*
 	handle @public {
 		reverse_proxy app:8000
 	}
