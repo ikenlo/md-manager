@@ -11,7 +11,7 @@ AI-адміністратор салону M&D: Instagram Direct і Telegram, з
 | 2 | Алгоритм слотів, create_booking, тест гонки | ✅ |
 | 3 | Telegram-бот + адмінка | ✅ |
 | 4 | AI-агент | ✅ |
-| 5 | Instagram | — |
+| 5 | Instagram | ✅ |
 | 6 | Нагадування і handoff | — |
 | 7 | Деплой | — |
 

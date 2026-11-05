@@ -15,12 +15,14 @@ from aiogram.types import Update
 from fastapi import FastAPI, Request, Response
 
 from app.agent.runner import Agent, make_client
+from app.channels import instagram as ig
 from app.channels import telegram as tg
 from app.config import Settings, get_settings
 from app.db.models import Channel
 from app.db.session import get_engine
 from app.dialog import Dialog
 from app.notify import Notifier
+from app.scheduler import Jobs
 
 log = logging.getLogger("mds")
 
@@ -31,6 +33,7 @@ class AppState:
     dialog: Dialog
     bot: Bot | None = None
     dp: Dispatcher | None = None
+    ig_handler: ig.InstagramHandler | None = None
     tasks: list[asyncio.Task[Any]]
 
 
@@ -74,8 +77,20 @@ async def lifespan(app: FastAPI):  # noqa: ANN201
     else:
         log.warning("TG_BOT_TOKEN not set — Telegram disabled")
 
+    ig_client = None
+    if settings.ig_app_secret:
+        ig_client = ig.InstagramClient(engine, settings)
+        state.notifier.senders[Channel.instagram] = ig_client.send
+        state.ig_handler = ig.InstagramHandler(engine, state.dialog, ig_client, state.notifier)
+        log.info("instagram: webhook enabled")
+    else:
+        log.warning("IG_APP_SECRET not set — Instagram disabled")
+
+    scheduler = Jobs(engine, settings, state.notifier, ig_client).start()
+
     yield
 
+    scheduler.shutdown(wait=False)
     for t in state.tasks:
         t.cancel()
     if state.dp is not None and state.tasks:
@@ -85,6 +100,14 @@ async def lifespan(app: FastAPI):  # noqa: ANN201
 
 
 app = FastAPI(title="MDs manager", lifespan=lifespan)
+
+
+async def _process_instagram(events: list[ig.Event]) -> None:
+    if state.ig_handler is not None:
+        await ig.process_events(state.ig_handler, events)
+
+
+app.include_router(ig.build_router(lambda: state.settings, _process_instagram))
 
 
 @app.get("/health")
