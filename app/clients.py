@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import delete, select
@@ -19,6 +20,13 @@ from app.db.models import (
 )
 
 AI_PAUSED_KEY = "ai_paused"
+_LABEL_RE = re.compile(r"[A-Za-z0-9_-]{1,64}")
+
+
+def clean_label(raw: str | None) -> str | None:
+    """Мітка джерела з посилання t.me/<бот>?start=<мітка> або реклами; сміття → None."""
+    raw = (raw or "").strip()
+    return raw if _LABEL_RE.fullmatch(raw) else None
 
 
 def get_or_create_tg_client(session: Session, tg_user_id: int, name: str = "") -> Client:

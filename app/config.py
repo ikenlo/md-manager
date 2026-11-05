@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     tg_webhook_secret: str = ""
     admin_ids: Annotated[list[int], NoDecode] = Field(default_factory=list)
 
+    # MDS Connect — джерело правди для записів (порожньо → локальна БД записів)
+    mds_url: str = ""  # https://m-d-production.up.railway.app
+    mds_token: str = ""  # той самий, що MDS_INTEGRATION_TOKEN у MDS Connect
+    tg_bot_username: str = ""  # для посилань з мітками: t.me/<username>?start=<мітка>
+
     # Інфраструктура
     public_url: str = ""  # https://bot.example.com → вебхуки; порожньо → long polling
     database_url: str = "sqlite:///./data/mds.db"

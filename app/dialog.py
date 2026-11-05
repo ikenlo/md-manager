@@ -53,11 +53,14 @@ class Dialog:
         text: str,
         *,
         external_id: str | None = None,
+        lead_source: str | None = None,
     ) -> str | None:
         """Повертає текст відповіді клієнту або None (бот мовчить)."""
         now = self.clock()
         with Session(self.engine) as s, s.begin():
             conv = cl.get_conversation(s, client_id, channel)
+            if lead_source:
+                conv.lead_source = lead_source
             if conv.state == ConversationState.closed:
                 conv.state = ConversationState.ai
             cl.add_message(s, conv, MessageRole.client, text, external_id=external_id, now=now)

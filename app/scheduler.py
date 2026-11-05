@@ -48,6 +48,8 @@ class Jobs:
             )
 
     async def reminders(self) -> None:
+        if self.settings.mds_url:  # записи й нагадування — у MDS Connect
+            return
         await reminders.send_due_reminders(self.engine, self.settings, self.notifier, self.clock())
 
     async def auto_resume(self) -> None:
