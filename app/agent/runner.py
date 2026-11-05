@@ -119,11 +119,13 @@ class Agent:
         engine: Engine,
         settings: Settings,
         notifier: Notifier,
+        mds: Any = None,
     ) -> None:
         self.client = client
         self.engine = engine
         self.settings = settings
         self.notifier = notifier
+        self.mds = mds  # MdsClient: записи в MDS Connect замість локальної БД
 
     async def reply(self, conversation_id: int, now: datetime) -> AgentResult:
         with Session(self.engine) as s:
@@ -132,6 +134,7 @@ class Agent:
             ctx = t.ToolContext(
                 engine=self.engine, settings=self.settings, notifier=self.notifier,
                 client_id=client.id, conversation_id=conv.id, channel=conv.channel, now=now,
+                mds=self.mds, lead_source=conv.lead_source,
             )  # fmt: skip
             system = [
                 {
