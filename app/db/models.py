@@ -175,6 +175,7 @@ class Booking(Base):
     reminded_24h: Mapped[bool] = mapped_column(Boolean, default=False)
     reminded_2h: Mapped[bool] = mapped_column(Boolean, default=False)
     created_by: Mapped[str] = mapped_column(String(64), default="")  # "ai" / tg_user_id адміна
+    lead_source: Mapped[str | None] = mapped_column(String(64), index=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 
     client: Mapped[Client] = relationship(back_populates="bookings")
@@ -193,6 +194,7 @@ class Conversation(Base):
         _enum(ConversationState, "conversation_state"), default=ConversationState.ai
     )
     last_inbound_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    lead_source: Mapped[str | None] = mapped_column(String(64))  # мітка посилання / реклами
     paused_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
 

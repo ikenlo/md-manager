@@ -46,9 +46,15 @@ async def lifespan(app: FastAPI):  # noqa: ANN201
     state.settings = settings
     state.notifier = Notifier()
     state.tasks = []
+    mds = None
+    if settings.mds_url and settings.mds_token:
+        from app.integrations.mds import MdsClient
+
+        mds = MdsClient(settings.mds_url, settings.mds_token, tz=settings.zone)
+        log.info("bookings: MDS Connect mode")
     agent = None
     if settings.anthropic_api_key:
-        agent = Agent(make_client(settings), engine, settings, state.notifier)
+        agent = Agent(make_client(settings), engine, settings, state.notifier, mds=mds)
     else:
         log.warning("ANTHROPIC_API_KEY not set — AI disabled, messages go to admins")
     state.dialog = Dialog(engine, agent, state.notifier)
@@ -58,7 +64,9 @@ async def lifespan(app: FastAPI):  # noqa: ANN201
         state.bot = bot
         state.notifier.admin_sender = tg.admin_sender(bot, settings.tg_admin_chat_id)
         state.notifier.senders[Channel.telegram] = tg.telegram_sender(bot)
-        state.dp = tg.build_dispatcher(engine, settings, state.notifier, dialog=state.dialog)
+        state.dp = tg.build_dispatcher(
+            engine, settings, state.notifier, dialog=state.dialog, mds=mds
+        )
         if settings.public_url:
             await bot.set_webhook(
                 f"{settings.public_url.rstrip('/')}/webhook/telegram",
