@@ -285,3 +285,14 @@ def test_before_after_compose_and_labels():
     assert abs(left[0] - 200) < 12 and abs(right[0] - 90) < 12
     tag = out.getpixel((40, 40))
     assert tag[1] > tag[0] and tag[1] < 120  # темно-зелена плашка підпису «ДО»
+
+
+def test_story_card_renders_text_in_both_scripts():
+    from app.content.story_card import SIZE, Font, Story, render
+
+    data = render(Story("цього тижня", "Є вільні віконця", ["Запис —"], [("Telegram-бот", "M&D")]))
+    img = Image.open(io.BytesIO(data))
+    assert img.size == SIZE
+    f = Font("manrope", 40, 500)
+    assert [t for t, _ in f.runs("Telegram-бот")] == ["Telegram-", "бот"]
+    assert f.runs("бот")[0][1] is f.cyr and f.runs("M&D")[0][1] is f.lat
