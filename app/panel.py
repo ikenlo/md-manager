@@ -24,16 +24,19 @@ WD = ["пн", "вт", "ср", "чт", "пт", "сб", "нд"]
 CSS = """
 :root{--bg:#eef1ec;--surface:#f8faf6;--ink:#12261d;--muted:#5a6b61;--line:#d3dbd3;--green:#163a2b;
 --gold:#9a7428;--tint:#e4ebe3;--good:#1f7a4d;--warn:#a5561c;--s1:#163a2b;--s2:#c08a2d;color-scheme:light}
-@media (prefers-color-scheme:dark){:root{--bg:#0c1a14;--surface:#12241b;--ink:#ece6d6;--muted:#9fb0a5;
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0c1a14;--surface:#12241b;--ink:#ece6d6;--muted:#9fb0a5;
 --line:#23392e;--green:#c9a458;--gold:#d2ad62;--tint:#172d23;--good:#5cc18d;--warn:#e39a5e;--s1:#7fc4a2;
 --s2:#d2ad62;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0c1a14;--surface:#12241b;--ink:#ece6d6;--muted:#9fb0a5;
+--line:#23392e;--green:#c9a458;--gold:#d2ad62;--tint:#172d23;--good:#5cc18d;--warn:#e39a5e;--s1:#7fc4a2;
+--s2:#d2ad62;color-scheme:dark}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);
 font:15px/1.5 "Segoe UI",system-ui,-apple-system,sans-serif;padding:24px max(16px,env(safe-area-inset-left))}
 .wrap{max-width:1040px;margin:0 auto;display:grid;gap:22px}
 h1{font:600 30px/1.1 Georgia,serif;margin:0}h2{font:600 20px/1.2 Georgia,serif;margin:0 0 10px}
 .mark{font:600 11px/1 Georgia,serif;letter-spacing:.3em;text-transform:uppercase;color:var(--gold)}
 .sub{color:var(--muted);margin:4px 0 0;font-size:14px}
-.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
 .kpi{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px}
 .kpi b{display:block;font:600 26px/1.1 Georgia,serif;font-variant-numeric:tabular-nums}
 .kpi span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
@@ -46,8 +49,7 @@ td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 .note{background:var(--tint);border-radius:8px;padding:9px 12px;font-size:13px;color:var(--muted);margin:0}
 .legend{display:flex;gap:16px;font-size:13px;color:var(--muted)}.legend i{display:inline-block;width:12px;
 height:3px;vertical-align:middle;margin-right:6px}
-.grid2{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:22px}
-@media (max-width:800px){.grid2{grid-template-columns:minmax(0,1fr)}}
+.grid2{display:grid;grid-template-columns:minmax(0,1fr);gap:22px}
 form{display:flex;gap:8px;flex-wrap:wrap}input{font:inherit;padding:9px 12px;border-radius:8px;
 border:1px solid var(--line);background:var(--bg);color:var(--ink)}button{font:inherit;font-weight:600;
 padding:9px 16px;border-radius:8px;border:0;background:var(--green);color:var(--bg);cursor:pointer}
@@ -151,9 +153,10 @@ def render(db: Dashboard, salon: str = "M&D") -> str:
         f"<div class='kpi'><span>{escape(k)}</span><b>{escape(v)}</b></div>" for k, v in kpis
     )
 
+    ad_names = {f"ig_ad_{a.ad_id}": a.name for a in db.ads}
     src_rows = (
         "".join(
-            f"<tr><td>{escape(r.source)}</td><td class='n'>{r.bookings}</td><td class='n'>{r.came}</td>"
+            f"<tr><td>{escape(ad_names.get(r.source, r.source))}</td><td class='n'>{r.bookings}</td><td class='n'>{r.came}</td>"
             f"<td class='n'>{r.no_show or ''}</td><td class='n'>{_uah(r.revenue_kop) if r.revenue_kop else ''}</td></tr>"
             for r in db.sources
         )

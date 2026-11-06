@@ -154,6 +154,7 @@ async def test_dashboard_links_ads_to_visits(engine, client):
     html = panel.render(db)
     assert "Блонд &lt;b&gt;" in html and "Блонд <b>" not in html
     assert "150 грн" in html and "4 500 грн" in html and "$0.50 з $30" in html
+    assert "<td>Блонд &lt;b&gt;</td>" in html  # джерело ig_ad_555 показане назвою оголошення
 
 
 async def test_dashboard_without_meta_or_mds(engine):
