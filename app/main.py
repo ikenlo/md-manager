@@ -15,9 +15,11 @@ from fastapi import FastAPI, Request, Response
 from app import panel
 from app.agent.runner import Agent, make_client
 from app.ai.analyst import Hub
+from app.ai.jobs import Background
 from app.channels import instagram as ig
 from app.channels import telegram as tg
 from app.config import Settings, get_settings
+from app.content import web as content_web
 from app.db.models import Channel
 from app.db.session import get_engine
 from app.dialog import Dialog
@@ -37,10 +39,13 @@ class AppState:
     mds: Any = None
     tasks: list[asyncio.Task[Any]]
     hub: Hub
+    studio: Any = None
+    content_jobs: Background
 
 
 state = AppState()
 state.hub = Hub(None)
+state.content_jobs = Background()
 
 
 @asynccontextmanager
@@ -131,9 +136,21 @@ async def lifespan(app: FastAPI):  # noqa: ANN201
     if settings.anthropic_api_key:
         analyst = Analyst(engine, settings, make_client(settings), mds=mds, dashboard=_dashboard)
     state.hub.analyst = analyst
+    from app.content.storage import Media
+    from app.content.studio import Studio
+
+    state.studio = Studio(
+        engine,
+        settings,
+        Media(settings.media_dir),
+        claude=make_client(settings) if settings.anthropic_api_key else None,
+        gemini=ai.gemini,
+        mds=mds,
+    )
     scheduler = Jobs(
-        engine, settings, state.notifier, ig_client, meta=meta, google=google, analyst=analyst
-    ).start()
+        engine, settings, state.notifier, ig_client, meta=meta, google=google, analyst=analyst,
+        studio=state.studio,
+    ).start()  # fmt: skip
 
     yield
 
@@ -179,6 +196,9 @@ app.include_router(
         _dashboard,
         panel.PanelDeps(get_day=_day, hub=state.hub, get_engine=get_engine),
     )
+)
+app.include_router(
+    content_web.build_router(lambda: state.settings, lambda: state.studio, state.content_jobs)
 )
 
 

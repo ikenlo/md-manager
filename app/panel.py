@@ -1,5 +1,5 @@
 """Панель власника /panel: статистика дня, AI-аналітик, записи за джерелами, реклама, пости, AI.
-/panel/content — контент-план на місяць для Instagram і Facebook з промптами для картинок і відео.
+Контент-план — окремий модуль app/content/web.py (/panel/content).
 
 Вхід за паролем PANEL_PASSWORD (cookie з HMAC). Без пароля в налаштуваннях панель вимкнена (404).
 HTML рендериться на сервері, без зовнішніх скриптів; усі дані екрануються.
@@ -288,9 +288,8 @@ def _ai_section(x: Extras) -> str:
             f"<p class='muted'>Мета: {escape(a.get('objective', ''))} · Аудиторія: "
             f"{escape(a.get('audience', ''))} · Бюджет: {escape(a.get('budget_hint', ''))}</p>"
             + _copy_block(uid + "t", "Текст оголошення", ad_text)
-            + "<details><summary>Промпти для картинки й відео</summary>"
+            + "<details><summary>Промпт для картинки</summary>"
             + _copy_block(uid + "i", "Зображення", a.get("image_prompt", ""))
-            + _copy_block(uid + "v", "Відео", a.get("video_prompt", ""))
             + "</details></div>"
         )
     if ideas:
@@ -411,91 +410,6 @@ def render(db: Dashboard, salon: str = "M&D", extras: Extras | None = None) -> s
     return _page("Панель M&D", body, refresh=x.running)
 
 
-def _month_name(m: date) -> str:
-    names = ["січень", "лютий", "березень", "квітень", "травень", "червень", "липень",
-             "серпень", "вересень", "жовтень", "листопад", "грудень"]  # fmt: skip
-    return f"{names[m.month - 1]} {m.year}"
-
-
-def render_content(
-    month: date,
-    report: an.Report | None,
-    *,
-    ai_enabled: bool,
-    running: bool = False,
-    error: str = "",
-    salon: str = "M&D",
-) -> str:
-    prev_m = (month - timedelta(days=1)).replace(day=1)
-    next_m = an.next_month(month)
-    nav_m = (
-        f"<nav class='nav'><a href='/panel/content?m={prev_m:%Y-%m}'>← {_month_name(prev_m)}</a>"
-        f"<a href='/panel/content?m={next_m:%Y-%m}'>{_month_name(next_m)} →</a></nav>"
-    )
-    form = ""
-    if ai_enabled:
-        label = (
-            "Готується…" if running else ("Згенерувати заново" if report else "Згенерувати план")
-        )
-        dis = " disabled" if running else ""
-        form = (
-            "<form method='post' action='/panel/content/generate'>"
-            f"<input type='hidden' name='month' value='{month:%Y-%m}'>"
-            f"<button type='submit'{dis}>{label}</button></form>"
-        )
-    body = (
-        f"<div><div class='mark'>{escape(salon)} · Beauty Salon</div><h1>Контент-план</h1>"
-        f"<p class='sub'>Instagram і Facebook · {_month_name(month)}</p></div>{NAV}"
-        f"<div class='head'>{nav_m}{form}</div>"
-    )
-    if not ai_enabled:
-        body += "<p class='note'>Потрібен ANTHROPIC_API_KEY, щоб генерувати план.</p>"
-    if error:
-        body += f"<p class='note'>⚠️ {escape(error)}</p>"
-    if running:
-        body += (
-            "<p class='note'>План готується (1–3 хв), сторінка оновиться сама. "
-            "Можна закрити її — результат збережеться.</p>"
-        )
-    if report is None:
-        if not running:
-            body += "<p class='note'>Плану на цей місяць ще немає.</p>"
-        return _page("Контент-план M&D", body, refresh=running)
-    d = report.data
-    goals = "".join(f"<li>{escape(g)}</li>" for g in d.get("goals") or [])
-    body += (
-        f"<section><h2>{escape(d.get('theme', ''))}</h2>"
-        + (f"<ul class='list'>{goals}</ul>" if goals else "")
-        + f"<p class='muted'>Постів: {len(d.get('posts') or [])} · {escape(report.model)} · "
-        f"${report.cost_usd:.2f} · {report.created_at.astimezone(UTC):%d.%m %H:%M} UTC</p>"
-        "</section>"
-    )
-    cards = ""
-    for i, p in enumerate(d.get("posts") or []):
-        uid = f"p{report.id}_{i}"
-        try:
-            pd = date.fromisoformat(p.get("date", ""))
-            when = f"{_day(pd)} {escape(p.get('time', ''))}"
-        except ValueError:
-            when = escape(p.get("date", ""))
-        tags = " ".join("#" + t.lstrip("#") for t in p.get("hashtags") or [])
-        caption = p.get("caption", "") + (f"\n\n{tags}" if tags else "")
-        cards += (
-            f"<div class='card'><div class='head'><b>{when}</b><span>"
-            f"<span class='tag'>{escape(PLATFORMS.get(p.get('platform'), ''))}</span>"
-            f"<span class='tag'>{escape(p.get('format', ''))}</span>"
-            f"<span class='tag'>{escape(p.get('rubric', ''))}</span></span></div>"
-            f"<h3>{escape(p.get('title', ''))}</h3>"
-            + _copy_block(uid + "c", "Підпис і хештеги", caption)
-            + f"<p class='muted'>Заклик: {escape(p.get('cta', ''))}</p>"
-            + _copy_block(uid + "i", "Промпт для зображення", p.get("image_prompt", ""))
-            + _copy_block(uid + "v", "Промпт для відео", p.get("video_prompt", ""))
-            + "</div>"
-        )
-    body += f"<div class='cards'>{cards}</div>"
-    return _page("Контент-план M&D", body, refresh=running)
-
-
 @dataclass
 class PanelDeps:
     """Що потрібно панелі крім дашборду (усе необовʼязкове — для тестів і без AI)."""
@@ -519,13 +433,6 @@ def _recent_posts(engine: Any, now: datetime) -> list[PostStat]:
                 .limit(10)
             )
         )
-
-
-def _parse_month(v: str | None, today: date) -> date:
-    try:
-        return datetime.strptime(v or "", "%Y-%m").date()
-    except ValueError:
-        return today.replace(day=1)
 
 
 def build_router(
@@ -572,35 +479,6 @@ def build_router(
         if ai_on():
             deps.hub.start_daily()  # type: ignore[union-attr]
         return RedirectResponse("/panel#ai", status_code=303)
-
-    @router.get("/panel/content", response_class=HTMLResponse)
-    async def content(request: Request, m: str | None = None) -> Response:
-        if (r := guard(request)) is not None:
-            return r
-        tz = get_settings().zone
-        month = _parse_month(m, deps.clock().astimezone(tz).date())
-        report = an.latest(deps.get_engine(), "content_plan", month) if deps.get_engine else None
-        key = f"plan:{month:%Y-%m}"
-        hub = deps.hub
-        return HTMLResponse(
-            render_content(
-                month,
-                report,
-                ai_enabled=ai_on(),
-                running=bool(hub and key in hub.running),
-                error=hub.errors.get(key, "") if hub else "",
-            )
-        )
-
-    @router.post("/panel/content/generate")
-    async def generate(request: Request, month: str = Form("")) -> Response:
-        if (r := guard(request)) is not None:
-            return r
-        tz = get_settings().zone
-        m = _parse_month(month, deps.clock().astimezone(tz).date())
-        if ai_on():
-            deps.hub.start_plan(m)  # type: ignore[union-attr]
-        return RedirectResponse(f"/panel/content?m={m:%Y-%m}", status_code=303)
 
     @router.post("/panel/login")
     async def login(password: str = Form("")) -> Response:

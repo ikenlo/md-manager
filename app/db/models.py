@@ -315,3 +315,49 @@ class AiReport(Base):
     cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
     payload: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)
+
+
+class ContentPhoto(Base):
+    """Фото салону, яке власник завантажив для постів і сторіс (файл — у MEDIA_DIR)."""
+
+    __tablename__ = "content_photos"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    file: Mapped[str] = mapped_column(String(64))  # імʼя файлу оригіналу (JPEG без EXIF)
+    original_name: Mapped[str] = mapped_column(String(200), default="")
+    width: Mapped[int] = mapped_column(Integer, default=0)
+    height: Mapped[int] = mapped_column(Integer, default=0)
+    description: Mapped[str] = mapped_column(Text, default="")  # що на фото — від AI
+    category: Mapped[str] = mapped_column(String(32), default="")  # work | interior | master | ...
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)
+
+
+class ContentItem(Base):
+    """Один пост або сторіс контент-плану: ідея → підтверджено → фото готове → опубліковано."""
+
+    __tablename__ = "content_items"
+    __table_args__ = (UniqueConstraint("slot_date", "kind"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    month: Mapped[date] = mapped_column(Date, index=True)  # 1-ше число
+    slot_date: Mapped[date] = mapped_column(Date)
+    kind: Mapped[str] = mapped_column(String(8))  # post | story
+    status: Mapped[str] = mapped_column(String(16), default="idea")  # idea|approved|ready|published
+    topic: Mapped[str] = mapped_column(String(200), default="")
+    caption: Mapped[str] = mapped_column(Text, default="")
+    hashtags: Mapped[str] = mapped_column(Text, default="[]")  # JSON-список
+    cta: Mapped[str] = mapped_column(String(300), default="")
+    photo_id: Mapped[int | None] = mapped_column(
+        ForeignKey("content_photos.id", ondelete="SET NULL")
+    )
+    photo_note: Mapped[str] = mapped_column(Text, default="")  # яке фото потрібне, якщо немає
+    edit_prompt: Mapped[str] = mapped_column(Text, default="")  # що підправити на фото (англ.)
+    rejections: Mapped[int] = mapped_column(Integer, default=0)  # відхилень поточної теми
+    topics_tried: Mapped[int] = mapped_column(Integer, default=1)
+    history: Mapped[str] = mapped_column(Text, default="[]")  # JSON: відхилені варіанти й причини
+    image_file: Mapped[str | None] = mapped_column(String(64))  # оброблене фото
+    image_status: Mapped[str] = mapped_column(String(16), default="none")  # none|ready|approved
+    image_rejections: Mapped[int] = mapped_column(Integer, default=0)
+    image_feedback: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, onupdate=utcnow)

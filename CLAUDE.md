@@ -36,8 +36,13 @@ AI-адміністратор салону M&D: Instagram Direct + Telegram, з�
   щодня о 06:30 Київ), google_ads.py (кампанії → ad_daily platform=google, о 06:40), daily.py (вчора vs
   середнє 7 днів), dashboard.py (оголошення ↔ записи через мітки ig_ad_<id> / gads_<campaign_id>).
 - AI-аналітик — app/ai/analyst.py: Claude (ANALYST_MODEL) зі structured outputs → ai_report
-  (daily о 07:05, content_plan 25-го). У промпт — лише агрегати, ніколи імена/телефони клієнтів.
-- Панель — app/panel.py: /panel (день, AI-звіт, реклама, пости), /panel/content (контент-план з промптами).
+  (daily о 07:05). У промпт — лише агрегати, ніколи імена/телефони клієнтів. Спільний виклик —
+  app/ai/claude_json.py, фонові задачі з сайту — app/ai/jobs.py.
+- Контент-план — app/content/: schedule.py (слоти: пост щотижня, сторіс раз на 2 дні — рахує код),
+  studio.py (ідеї, підтвердити/відхилити: 3-тє відхилення → нова тема; фото салону → Gemini трохи
+  підправляє, результат послуги не змінюється), storage.py (фото без EXIF), web.py (/panel/content).
+  Відео не робимо. Ідеї на наступний місяць — 25-го.
+- Панель — app/panel.py (/panel). Стилі нових сторінок — app/web_style.py (токени MDS Connect).
 
 ## Команди
 - docker compose up -d — запуск

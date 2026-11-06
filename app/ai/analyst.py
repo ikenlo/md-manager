@@ -1,4 +1,4 @@
-"""AI-аналітик (Claude): щоденний звіт із порадами й ідеями реклами, контент-план на місяць.
+"""AI-аналітик (Claude): щоденний звіт із порадами й ідеями реклами.
 
 У Claude йдуть лише агрегати (цифри дня, оголошення, пости салону, послуги з цінами) —
 жодних імен, телефонів чи переписки клієнтів. Відповідь — строгий JSON за схемою
@@ -7,8 +7,6 @@
 
 from __future__ import annotations
 
-import asyncio
-import calendar
 import json
 import logging
 from collections import Counter
@@ -20,8 +18,8 @@ from typing import Any
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
-from app.agent import usage
-from app.ai import budget, prices
+from app.ai.claude_json import AiUnavailable, ask_json, obj
+from app.ai.jobs import Background
 from app.analytics import daily
 from app.analytics.dashboard import Dashboard
 from app.config import Settings
@@ -29,7 +27,6 @@ from app.db.models import AiReport, PostStat, Service
 
 log = logging.getLogger(__name__)
 
-FALLBACK_BETA = "server-side-fallback-2026-07-01"
 WD = ["понеділок", "вівторок", "середа", "четвер", "пʼятниця", "субота", "неділя"]
 
 SALON = (
@@ -42,10 +39,9 @@ PROMPT_RULES = (
     "- Пиши українською, коротко й конкретно, на «ви». Без канцеляриту.\n"
     "- Спирайся лише на надані цифри. Не вигадуй цін, акцій, знижок, майстрів чи фактів: "
     "ціни — тільки з каталогу послуг. Якщо даних мало — так і скажи і порадь, що зібрати.\n"
-    "- Промпти для зображень і відео — англійською (генератори розуміють її найкраще): "
-    "реалістичне фото/відео для соцмереж салону краси, тепле природне світло, "
-    "без тексту й логотипів у кадрі, без впізнаваних облич знаменитостей. "
-    "Відео — вертикальне 9:16, 8–10 секунд, опиши 2–4 плани, рух камери і звук.\n"
+    "- Промпт для зображення — англійською (генератори розуміють її найкраще): "
+    "реалістичне фото для соцмереж салону краси, тепле природне світло, "
+    "без тексту й логотипів у кадрі, без впізнаваних облич знаменитостей.\n"
     "- Нічого не запускай і не обіцяй від імені салону — ти радиш власнику."
 )
 
@@ -57,30 +53,11 @@ DAILY_SYSTEM = (
     f"{PROMPT_RULES}"
 )
 
-PLAN_SYSTEM = (
-    f"Ти — SMM-стратег салону. {SALON}\n"
-    "Склади контент-план на місяць для Instagram і Facebook: чергуй рубрики (результати "
-    "робіт до/після, процес, поради догляду, майстри й атмосфера, відгуки, сезонні послуги, "
-    "закулісся), формати (Reels, карусель, пост, сторіс) і дні з найкращим охопленням. "
-    "Ураховуй свята й сезон в Україні цього місяця. До кожного поста — готовий підпис, "
-    "хештеги, заклик до дії (запис у Direct або Telegram), промпт для зображення і для відео.\n"
-    f"{PROMPT_RULES}"
-)
-
-
-def _obj(props: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "type": "object",
-        "properties": props,
-        "required": list(props),
-        "additionalProperties": False,
-    }
-
 
 S = {"type": "string"}
 PLATFORM = {"type": "string", "enum": ["instagram", "facebook", "both"]}
 
-AD_IDEA = _obj(
+AD_IDEA = obj(
     {
         "platform": PLATFORM,
         "objective": S,
@@ -91,22 +68,19 @@ AD_IDEA = _obj(
         "cta": S,
         "budget_hint": S,
         "image_prompt": S,
-        "video_prompt": S,
     }
 )
 
-DAILY_SCHEMA = _obj(
+DAILY_SCHEMA = obj(
     {
         "summary": S,
         "highlights": {
             "type": "array",
-            "items": _obj(
-                {"tone": {"type": "string", "enum": ["good", "warn", "info"]}, "text": S}
-            ),
+            "items": obj({"tone": {"type": "string", "enum": ["good", "warn", "info"]}, "text": S}),
         },
         "actions": {
             "type": "array",
-            "items": _obj(
+            "items": obj(
                 {
                     "priority": {"type": "string", "enum": ["high", "medium", "low"]},
                     "title": S,
@@ -119,33 +93,8 @@ DAILY_SCHEMA = _obj(
     }
 )
 
-POST = _obj(
-    {
-        "date": {"type": "string", "description": "YYYY-MM-DD"},
-        "time": {"type": "string", "description": "HH:MM за Києвом"},
-        "platform": PLATFORM,
-        "format": {"type": "string", "enum": ["reels", "carousel", "post", "stories"]},
-        "rubric": S,
-        "title": S,
-        "caption": S,
-        "hashtags": {"type": "array", "items": S},
-        "cta": S,
-        "image_prompt": S,
-        "video_prompt": S,
-    }
-)
 
-PLAN_SCHEMA = _obj(
-    {
-        "theme": S,
-        "goals": {"type": "array", "items": S},
-        "posts": {"type": "array", "items": POST},
-    }
-)
-
-
-class AnalystUnavailable(Exception):
-    pass
+AnalystUnavailable = AiUnavailable
 
 
 @dataclass
@@ -334,42 +283,11 @@ class Analyst:
     async def _ask(
         self, system: str, user: str, schema: dict[str, Any], *, expect_out: int, kind: str
     ) -> tuple[dict[str, Any], str, float]:
-        if self.claude is None:
-            raise AnalystUnavailable("AI-аналітик потребує ANTHROPIC_API_KEY")
-        model = self.settings.analyst_model
-        with Session(self.engine) as s:
-            budget.check(
-                s,
-                self.settings.ai_monthly_budget_usd,
-                self.clock(),
-                self.settings.zone,
-                prices.text_cost(model, (len(system) + len(user)) // 2, expect_out),
-            )
-        async with self.claude.beta.messages.stream(
-            model=model,
-            max_tokens=64000,
-            system=system,
-            messages=[{"role": "user", "content": user}],
-            output_config={
-                "effort": self.settings.analyst_effort,
-                "format": {"type": "json_schema", "schema": schema},
-            },
-            betas=[FALLBACK_BETA],
-            fallbacks="default",
-        ) as stream:
-            msg = await stream.get_final_message()
-        served = getattr(msg, "model", None) or model
-        with Session(self.engine) as s, s.begin():
-            cost = usage.record(s, None, served, msg.usage, kind=kind).cost_usd
-        if msg.stop_reason == "refusal":
-            raise AnalystUnavailable("Модель відмовилась відповідати — спробуйте пізніше")
-        if msg.stop_reason == "max_tokens":
-            raise AnalystUnavailable("Відповідь обірвалась (ліміт токенів) — спробуйте ще раз")
-        text = next((b.text for b in msg.content if b.type == "text"), "")
-        try:
-            return json.loads(text), served, cost
-        except ValueError as e:
-            raise AnalystUnavailable("AI повернув некоректну відповідь") from e
+        return await ask_json(
+            self.claude, self.engine, self.settings, self.clock,
+            model=self.settings.analyst_model, effort=self.settings.analyst_effort,
+            system=system, content=user, schema=schema, expect_out=expect_out, kind=kind,
+        )  # fmt: skip
 
     def _save(self, kind: str, period: date, data: dict[str, Any], model: str, cost: float) -> int:
         with Session(self.engine) as s, s.begin():
@@ -393,8 +311,8 @@ class Analyst:
             "спостережень: що виросло/впало і чому це важливо), actions (3–5 конкретних дій "
             "на сьогодні–тиждень: реклама, пости, робота з неявками, бюджет — з поясненням "
             "«чому» і «як»), ad_ideas (2–3 нові рекламні пости під послуги, що окупаються або "
-            "мають вільні години, з текстом оголошення, аудиторією, порадою щодо бюджету, "
-            "промптами для картинки й відео)."
+            "мають вільні години, з текстом оголошення, аудиторією, порадою щодо бюджету "
+            "і промптом для картинки)."
         )
         data, model, cost = await self._ask(
             DAILY_SYSTEM, user, DAILY_SCHEMA, expect_out=6000, kind="analysis"
@@ -403,79 +321,18 @@ class Analyst:
         rid = self._save("daily", day, data, model, cost)
         return Report(rid, "daily", day, self.clock(), model, cost, data)
 
-    async def content_plan(self, month: date) -> Report:
-        month = month.replace(day=1)
-        snap = await self.snapshot()
-        days_in = calendar.monthrange(month.year, month.month)[1]
-        n = self.settings.content_plan_posts
-        user = (
-            f"Місяць плану: {month:%Y-%m} ({days_in} днів, 1-ше число — "
-            f"{WD[month.weekday()]}). Постів: {n} (розподіли рівномірно; Reels — щонайменше "
-            "третина; частину постів — для обох мереж, частину — окремо для Facebook, де "
-            "аудиторія старша).\n"
-            "Що вже відомо про салон і аудиторію (JSON):\n"
-            + json.dumps(
-                {
-                    "services": snap["services"],
-                    "posts_last_30d": snap["posts_last_30d"],
-                    "last_30d": snap.get("last_30d"),
-                },
-                ensure_ascii=False,
-                default=str,
-            )
-            + "\n\nДати — лише в межах цього місяця, у форматі YYYY-MM-DD, за зростанням."
-        )
-        data, model, cost = await self._ask(
-            PLAN_SYSTEM, user, PLAN_SCHEMA, expect_out=1200 * n, kind="plan"
-        )
-        prefix = f"{month:%Y-%m}-"
-        data["posts"] = sorted(
-            (p for p in data.get("posts") or [] if str(p.get("date", "")).startswith(prefix)),
-            key=lambda p: (p["date"], p.get("time", "")),
-        )
-        rid = self._save("content_plan", month, data, model, cost)
-        return Report(rid, "content_plan", month, self.clock(), model, cost, data)
 
-
-class Hub:
-    """Запуск звіту/плану у фоні з панелі (генерація триває до кількох хвилин)."""
+class Hub(Background):
+    """Запуск щоденного звіту з сайту у фоні."""
 
     def __init__(self, analyst: Analyst | None) -> None:
+        super().__init__()
         self.analyst = analyst
-        self.running: set[str] = set()
-        self.errors: dict[str, str] = {}
-        self._tasks: set[asyncio.Task[Any]] = set()
 
     @property
     def enabled(self) -> bool:
         return self.analyst is not None and self.analyst.claude is not None
 
-    def start(self, key: str, coro_factory: Callable[[], Awaitable[Any]]) -> bool:
-        if key in self.running:
-            return False
-        self.running.add(key)
-        self.errors.pop(key, None)
-
-        async def run() -> None:
-            try:
-                await coro_factory()
-            except (AnalystUnavailable, budget.BudgetExceeded) as e:
-                self.errors[key] = str(e)
-            except Exception:  # noqa: BLE001
-                log.exception("analyst job %s failed", key)
-                self.errors[key] = "Не вдалося згенерувати — деталі в логах сервера."
-            finally:
-                self.running.discard(key)
-
-        task = asyncio.create_task(run())
-        self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
-        return True
-
     def start_daily(self) -> bool:
         assert self.analyst is not None
         return self.start("daily", self.analyst.daily_report)
-
-    def start_plan(self, month: date) -> bool:
-        assert self.analyst is not None
-        return self.start(f"plan:{month:%Y-%m}", lambda: self.analyst.content_plan(month))

@@ -97,12 +97,27 @@ class GeminiClient:
         return TextResult(text.strip(), inp, out)
 
     async def image(
-        self, model: str, prompt: str, *, aspect_ratio: str = "4:5", image_size: str = "1K"
+        self,
+        model: str,
+        prompt: str,
+        *,
+        aspect_ratio: str = "4:5",
+        image_size: str = "1K",
+        source: bytes | None = None,
+        source_mime: str = "image/jpeg",
     ) -> ImageResult:
+        """Нова картинка за промптом або, з source, — редагування переданого фото."""
+        inp: str | list[dict[str, str]] = prompt
+        if source is not None:
+            inp = [
+                {"type": "text", "text": prompt},
+                {"type": "image", "mime_type": source_mime,
+                 "data": base64.b64encode(source).decode()},
+            ]  # fmt: skip
         data = await self._interact(
             {
                 "model": model,
-                "input": prompt,
+                "input": inp,
                 "response_format": {
                     "type": "image",
                     "mime_type": "image/jpeg",

@@ -48,8 +48,14 @@ class Settings(BaseSettings):
     analyst_model: str = "claude-opus-5-5"
     analyst_effort: str = "medium"  # low | medium | high
     analyst_daily: bool = True  # щодня о 07:05 Київ після збору аналітики
-    content_plan_posts: int = 16  # постів на місяць (Instagram + Facebook)
-    content_plan_auto_day: int = 25  # цього числа — план на наступний місяць (0 — вимкнено)
+
+    # Контент-план: 1 пост на тиждень + сторіс раз на N днів; фото дає власник, AI підправляє
+    content_post_weekday: int = 3  # 0 — понеділок … 3 — четвер
+    content_post_time: str = "18:00"
+    content_story_every_days: int = 2
+    content_story_time: str = "11:00"
+    content_plan_auto_day: int = 25  # цього числа — ідеї на наступний місяць (0 — вимкнено)
+    media_dir: str = "./data/media"  # фото салону й оброблені версії
 
     # Панель власника /panel (вхід за паролем)
     panel_password: str = ""

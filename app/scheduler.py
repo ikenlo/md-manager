@@ -33,6 +33,7 @@ class Jobs:
         meta: Any = None,
         google: Any = None,
         analyst: Any = None,
+        studio: Any = None,
     ) -> None:
         self.engine = engine
         self.settings = settings
@@ -42,6 +43,7 @@ class Jobs:
         self.meta = meta  # MetaClient: щоденна аналітика Instagram, Facebook і реклами
         self.google = google  # GoogleAdsClient
         self.analyst = analyst  # app.ai.analyst.Analyst
+        self.studio = studio  # app.content.studio.Studio
 
     async def refresh_ig_token(self) -> None:
         if self.ig is None or not self.ig.token():
@@ -121,22 +123,24 @@ class Jobs:
         await self.notifier.admin(text + self._panel_link("/panel#ai"))
 
     async def monthly_plan(self) -> None:
-        if self.analyst is None:
+        """Ідеї постів і сторіс на наступний місяць — власник підтверджує їх на сайті."""
+        if self.studio is None or not self.studio.can_write:
             return
         from app.ai.analyst import next_month
 
         month = next_month(self.clock().astimezone(self.settings.zone).date())
         try:
-            report = await self.analyst.content_plan(month)
+            n = await self.studio.generate_month(month)
         except Exception as e:  # noqa: BLE001
             log.exception("content plan failed")
-            await self.notifier.admin(f"⚠️ Контент-план на {month:%m.%Y} не згенерувався: {e}")
+            await self.notifier.admin(f"⚠️ Ідеї на {month:%m.%Y} не згенерувались: {e}")
             return
-        n = len(report.data.get("posts") or [])
-        await self.notifier.admin(
-            f"🗓 Контент-план на {month:%m.%Y} готовий: {n} постів з підписами й промптами."
-            + self._panel_link(f"/panel/content?m={month:%Y-%m}")
-        )
+        if n:
+            await self.notifier.admin(
+                f"🗓 Ідеї на {month:%m.%Y} готові: {n} постів і сторіс чекають вашого "
+                "«Підтвердити» або «Відхилити»."
+                + self._panel_link(f"/panel/content?m={month:%Y-%m}")
+            )
 
     async def cleanup(self) -> None:
         n = reminders.cleanup_old_messages(self.engine, self.clock())

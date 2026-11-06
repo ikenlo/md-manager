@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app import panel
 from app.ai import analyst as an
 from app.ai.budget import BudgetExceeded
+from app.ai.claude_json import FALLBACK_BETA
 from app.analytics import daily, dashboard
 from app.config import Settings
 from app.db.models import AdDaily, AiReport, AiUsage, MetricDaily, PostStat
@@ -50,20 +51,6 @@ REPORT = {
             "video_prompt": "9:16, 8s",
         },
     ],  # fmt: skip
-}
-
-
-def _post(day: str, **kw):
-    base = {"date": day, "time": "18:00", "platform": "both", "format": "reels",
-            "rubric": "до/після", "title": "Блонд", "caption": "Текст", "hashtags": ["блонд"],
-            "cta": "Запис у Direct", "image_prompt": "photo", "video_prompt": "video"}  # fmt: skip
-    return {**base, **kw}
-
-
-PLAN = {
-    "theme": "Грудень: святкові образи",
-    "goals": ["Більше записів на манікюр"],
-    "posts": [_post("2026-12-05"), _post("2026-11-30"), _post("2026-12-01", title="Перший")],
 }
 
 
@@ -205,7 +192,7 @@ async def test_daily_report_saved_without_personal_data(engine):
     assert rep.period_start == YDAY and rep.data["summary"].startswith("Вчора")
     (req,) = claude.requests
     assert req["model"] == "claude-opus-5-5"
-    assert req["fallbacks"] == "default" and req["betas"] == [an.FALLBACK_BETA]
+    assert req["fallbacks"] == "default" and req["betas"] == [FALLBACK_BETA]
     assert req["output_config"]["format"]["type"] == "json_schema"
     prompt = req["messages"][0]["content"]
     assert PHONE not in prompt and "Олена" not in prompt and "Маргарита" not in prompt
@@ -230,7 +217,6 @@ async def test_schema_is_strict():
             check(node["items"])
 
     check(an.DAILY_SCHEMA)
-    check(an.PLAN_SCHEMA)
 
 
 async def test_refusal_and_truncation_not_saved(engine):
@@ -255,17 +241,6 @@ async def test_budget_blocks_call(engine):
 async def test_no_claude():
     with pytest.raises(an.AnalystUnavailable, match="ANTHROPIC_API_KEY"):
         await an.Analyst(None, settings(), None)._ask("s", "u", {}, expect_out=1, kind="x")
-
-
-async def test_content_plan_month_filter_and_order(engine):
-    claude = FakeAnthropic(message(PLAN))
-    rep = await make_analyst(engine, claude, content_plan_posts=12).content_plan(date(2026, 12, 9))
-    assert rep.period_start == date(2026, 12, 1)
-    assert [p["date"] for p in rep.data["posts"]] == ["2026-12-01", "2026-12-05"]  # 30.11 — геть
-    prompt = claude.requests[0]["messages"][0]["content"]
-    assert "2026-12" in prompt and "Постів: 12" in prompt and "вівторок" in prompt
-    assert an.latest(engine, "content_plan", date(2026, 12, 1)).id == rep.id
-    assert an.latest(engine, "content_plan", date(2027, 1, 1)) is None
 
 
 def test_next_month():
@@ -293,22 +268,19 @@ async def test_hub_runs_once_and_keeps_error(engine):
     assert "daily" not in hub.running and hub.errors["daily"] == "Модель відмовилась"
 
 
-async def test_scheduler_daily_and_monthly_notify(engine):
+async def test_scheduler_daily_notify(engine):
     sent = []
 
     async def admin(text, keyboard=None):
         sent.append(text)
 
-    claude = FakeAnthropic(message(REPORT), message(PLAN))
+    claude = FakeAnthropic(message(REPORT))
     a = make_analyst(engine, claude)
     jobs = Jobs(engine, settings(public_url="https://bot.md.ua"), Notifier(admin_sender=admin),
                 clock=lambda: datetime(2026, 11, 25, 8, 0, tzinfo=UTC), analyst=a)  # fmt: skip
     await jobs.daily_analysis()
-    await jobs.monthly_plan()
     assert "📊 Звіт за 19.11" in sent[0] and "• Підняти бюджет блонду" in sent[0]
     assert "https://bot.md.ua/panel#ai" in sent[0]
-    assert "12.2026" in sent[1] and "2 постів" in sent[1]
-    assert "https://bot.md.ua/panel/content?m=2026-12" in sent[1]
 
 
 async def test_scheduler_reports_failure(engine):
@@ -377,7 +349,7 @@ async def test_panel_without_ai(engine):
 async def test_panel_post_requires_login(engine):
     hub = an.Hub(make_analyst(engine, FakeAnthropic()))
     c = panel_app(engine, hub=hub)
-    r = c.post("/panel/content/generate", data={"month": "2026-12"}, follow_redirects=False)
+    r = c.post("/panel/ai/daily", follow_redirects=False)
     assert r.status_code == 303 and r.headers["location"] == "/panel"
     assert hub.running == set()
 
@@ -395,35 +367,3 @@ async def test_panel_generate_daily_in_background(engine):
                 break
             time.sleep(0.01)
     assert hub.errors == {} and an.latest(engine, "daily") is not None
-
-
-async def test_content_page(engine):
-    save(engine, "content_plan", date(2026, 12, 1),
-         {**PLAN, "posts": [_post("2026-12-01", caption="Святковий <манікюр>")]})  # fmt: skip
-    c = login(panel_app(engine, hub=an.Hub(make_analyst(engine, FakeAnthropic()))))
-    html = c.get("/panel/content?m=2026-12").text
-    assert "грудень 2026" in html and "Грудень: святкові образи" in html
-    assert "вт 01.12 18:00" in html and "Instagram + Facebook" in html
-    assert "Святковий &lt;манікюр&gt;\n\n#блонд" in html
-    assert "Промпт для відео" in html and "Згенерувати заново" in html
-    assert "← листопад 2026" in html and "січень 2027 →" in html
-    empty = c.get("/panel/content?m=2027-01").text
-    assert "Плану на цей місяць ще немає" in empty and "Згенерувати план" in empty
-    assert "листопад 2026" in c.get("/panel/content?m=garbage").text  # поточний місяць
-
-
-async def test_content_generate_starts_job(engine):
-    hub = an.Hub(make_analyst(engine, FakeAnthropic()))
-
-    async def never(month):
-        await asyncio.sleep(3600)
-
-    hub.analyst.content_plan = never
-    with panel_app(engine, hub=hub) as c:
-        login(c)
-        r = c.post("/panel/content/generate", data={"month": "2026-12"}, follow_redirects=False)
-        assert r.headers["location"] == "/panel/content?m=2026-12"
-        page = c.get("/panel/content?m=2026-12").text
-        assert "План готується" in page and "http-equiv='refresh'" in page
-        c.post("/panel/content/generate", data={"month": "2026-12"})
-        assert hub.running == {"plan:2026-12"}  # повторне натискання не запускає другу

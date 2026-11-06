@@ -5,6 +5,7 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: sqlite:////data/mds.db
+      MEDIA_DIR: /data/media  # фото салону — на постійному диску
       PUBLIC_URL: https://${DOMAIN}
     volumes:
       - ./data:/data
