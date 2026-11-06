@@ -38,6 +38,22 @@ class ImageResult:
     caption: str
 
 
+def _explain(status: int, msg: str) -> str:
+    """Відповідь Google → зрозуміла власнику причина (українською) і що зробити."""
+    if status == 429 and "free tier" in msg.lower():
+        return (
+            "Ця модель Gemini недоступна на безкоштовному тарифі — увімкніть оплату в Google "
+            "AI Studio (docs/GEMINI_SETUP.md, крок 2)"
+        )
+    if status == 429:
+        return "Gemini: забагато запитів — спробуйте за хвилину"
+    if status == 402:
+        return "Gemini: закінчились кредити — поповніть рахунок на aistudio.google.com/billing"
+    if status in (401, 403):
+        return "Gemini не прийняв ключ — перевірте GEMINI_API_KEY і обмеження ключа"
+    return msg or f"Gemini: помилка {status}"
+
+
 class GeminiClient:
     def __init__(self, api_key: str, http: httpx.AsyncClient | None = None) -> None:
         self.api_key = api_key
@@ -58,7 +74,7 @@ class GeminiClient:
                 msg = r.json().get("error", {}).get("message", "")
             except ValueError:
                 msg = ""
-            raise GeminiError(r.status_code, msg or f"Gemini: помилка {r.status_code}")
+            raise GeminiError(r.status_code, _explain(r.status_code, msg))
         data = r.json()
         if data.get("status") not in (None, "completed"):
             raise GeminiError(422, f"Gemini: статус {data.get('status')}")

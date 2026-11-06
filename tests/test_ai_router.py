@@ -148,7 +148,7 @@ async def test_image_generation(engine, settings, fake):
 async def test_gemini_errors(engine, settings):
     with pytest.raises(GeminiError) as e:
         await make_router(engine, settings, FakeGemini(status=429)).bulk_text("x")
-    assert e.value.status == 429 and "quota" in e.value.message
+    assert e.value.status == 429 and "забагато запитів" in e.value.message
     failed = FakeGemini(body={"status": "failed", "steps": []})
     with pytest.raises(GeminiError, match="failed"):
         await make_router(engine, settings, failed).bulk_text("x")
@@ -193,3 +193,30 @@ async def test_gen_image_budget_commands(tg, engine):
 async def test_gen_ignored_for_non_admin(tg):
     await tg.send("/gen щось", user_id=777, chat_id=ADMIN_CHAT)
     assert tg.texts(ADMIN_CHAT) == []
+
+
+@pytest.mark.parametrize(
+    ("status", "message", "expected"),
+    [
+        (
+            429,
+            "Rate limit exceeded for model x (limit: 0 ... on Free Tier).",
+            "безкоштовному тарифі",
+        ),
+        (429, "Resource exhausted", "забагато запитів"),
+        (402, "Payment required", "закінчились кредити"),
+        (403, "API key not valid", "не прийняв ключ"),
+        (500, "Internal", "Internal"),
+    ],
+)
+async def test_gemini_errors_explained_in_ukrainian(status, message, expected):
+    import httpx
+
+    from app.ai.gemini import GeminiClient, GeminiError
+
+    def handler(req):
+        return httpx.Response(status, json={"error": {"message": message}})
+
+    g = GeminiClient("k", httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    with pytest.raises(GeminiError, match=expected):
+        await g.image("m", "p", source=b"x")
