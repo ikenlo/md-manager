@@ -517,7 +517,7 @@ async function viewSettings(el) {
       h("div", { class: "card" }, h("div", { class: "card-head" }, h("h3", {}, "Підключення")), s.connections.map((c) => h("div", { class: "row-between act" },
         h("div", {}, h("b", {}, c.name), h("div", { class: "muted small" }, c.what)), h("span", { class: "chip " + (c.ok ? "st-completed" : "st-pending") }, c.ok ? "Працює" : "Не підключено")))),
       h("div", { class: "card" }, h("div", { class: "card-head" }, h("h3", {}, "AI і контент")),
-        h("div", { class: "act" }, h("b", {}, `Ліміт на AI: $${s.ai_spent.toFixed(2)} з $${s.ai_budget.toFixed(0)} цього місяця`), h("div", { class: "muted small" }, "Змінюється в .env на сервері (AI_MONTHLY_BUDGET_USD).")),
+        h("div", { class: "act" }, h("b", {}, s.ai_budget > 0 ? `Ліміт на AI: $${s.ai_spent.toFixed(2)} з $${s.ai_budget.toFixed(0)} цього місяця` : `AI цього місяця: $${s.ai_spent.toFixed(2)} · без ліміту`), h("div", { class: "muted small" }, "Змінюється в .env на сервері (AI_MONTHLY_BUDGET_USD).")),
         h("div", { class: "act" }, h("b", {}, `Пост що${WD_GEN[(s.content.post_weekday + 1) % 7]}, сторіс раз на ${s.content.story_every} ${plural(s.content.story_every, "день", "дні", "днів")}`),
           h("div", { class: "muted small" }, s.content.auto_day ? `Ідеї на наступний місяць — ${s.content.auto_day}-го числа.` : "Автогенерація ідей вимкнена.")),
         h("div", { class: "act" }, h("b", {}, s.analyst_daily ? "Щоденний AI-звіт о 07:05 увімкнено" : "Щоденний AI-звіт вимкнено")),
