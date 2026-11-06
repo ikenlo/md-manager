@@ -7,7 +7,7 @@
 
 | # | Що | Скільки чекати | Навіщо |
 |---|---|---|---|
-| 1 | **Google AI Studio**: проєкт, ключ Gemini API, **увімкнена оплата** | хвилини | дешеві тексти й картинки (`GEMINI_API_KEY`) |
+| 1 | **Google AI Studio**: проєкт, ключ Gemini API, **увімкнена оплата** — покроково в docs/GEMINI_SETUP.md | хвилини | обробка фото для контент-плану (`GEMINI_API_KEY`) |
 | 2 | **Meta Business Manager**: рекламний акаунт + сторінка Facebook + Instagram professional, привʼязаний до сторінки. Meta-апка типу Business, **System User** з токеном (`ads_read`, `ads_management`, `business_management`, `pages_*`, `instagram_*`) | ~1 день, перевірка не потрібна | аналітика IG/FB, звіти й (з вашого «так») створення реклами |
 | 3 | **Events Manager → набір даних Conversions API** | хвилини | передавати Meta, хто реально прийшов (офлайн-події) — реклама вчиться знаходити схожих |
 | 4 | **Google Business Profile API**: форма доступу з номером Cloud-проєкту | 1–4 тижні | перегляди на картах, дзвінки, маршрути, відгуки |
