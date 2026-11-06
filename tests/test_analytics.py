@@ -11,11 +11,12 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import panel
-from app.analytics import dashboard
+from app.analytics import dashboard, google_ads
+from app.analytics.google_ads import GoogleAdsClient, GoogleAdsError
 from app.analytics.meta import MetaClient, MetaError, collect
 from app.booking.slots import KYIV
 from app.config import Settings
-from app.db.models import AdDaily, AiUsage, MetricDaily
+from app.db.models import AdDaily, AiUsage, MetricDaily, PostStat
 
 NOW = datetime(2026, 11, 20, 8, 0, tzinfo=UTC)
 TODAY = date(2026, 11, 20)
@@ -33,6 +34,35 @@ class FakeMeta:
         if self.fail:
             return httpx.Response(400, json={"error": {"message": "Invalid OAuth access token"}})
         p, q = req.url.path, req.url.params
+        if p.endswith("/ig1/media"):
+            return httpx.Response(200, json={"data": [
+                {"id": "m1", "caption": "Блонд <script>", "media_type": "VIDEO",
+                 "media_product_type": "REELS", "timestamp": "2026-11-18T15:00:00+0000",
+                 "permalink": "https://www.instagram.com/reel/m1/", "like_count": 40,
+                 "comments_count": 3},
+                {"id": "m2", "caption": "Стара сторіс", "media_type": "IMAGE",
+                 "timestamp": "2026-11-10T09:00:00+0000", "permalink": "javascript:alert(1)",
+                 "like_count": 5},
+            ]})  # fmt: skip
+        if p.endswith("/m1/insights"):
+            return httpx.Response(200, json={"data": [
+                {"name": "reach", "values": [{"value": 900}]},
+                {"name": "views", "total_value": {"value": 2500}},
+                {"name": "saved", "values": [{"value": 12}]},
+            ]})  # fmt: skip
+        if p.endswith("/m2/insights"):
+            return httpx.Response(400, json={"error": {"message": "no insights"}})
+        if p.endswith("/page1") and q.get("fields") == "access_token":
+            return httpx.Response(200, json={"access_token": "page-tok", "id": "page1"})
+        if p.endswith("/page1/insights"):
+            assert req.headers["Authorization"] == "Bearer page-tok"
+            metrics = q["metric"].split(",")
+            if len(metrics) > 1 or metrics == ["page_daily_follows_unique"]:
+                return httpx.Response(400, json={"error": {"message": "invalid metric"}})
+            return httpx.Response(
+                200,
+                json={"data": [{"name": metrics[0], "period": "day", "values": [{"value": 77}]}]},
+            )
         if p.endswith("/insights") and "act_" not in p:
             day = datetime.fromtimestamp(int(q["since"]), KYIV).day
             return httpx.Response(200, json={"data": [
@@ -73,7 +103,7 @@ async def test_collect_instagram_and_ads(engine, client, fake):
     stats = await collect(
         engine, client, today=TODAY, tz=KYIV, ig_user_id="ig1", ad_account_id="77"
     )
-    assert stats == {"ig_days": 3, "ad_rows": 2}
+    assert stats == {"ig_days": 3, "ad_rows": 2, "posts": 2}
     ig_req = fake.requests[0]
     assert ig_req.url.path == "/v26.0/ig1/insights"
     assert ig_req.headers["Authorization"] == "Bearer tok"
@@ -188,3 +218,88 @@ async def test_panel_login(engine):
     c.cookies.clear()
     c.cookies.set(panel.COOKIE, "forged")
     assert "Звідки записи" not in c.get("/panel").text
+
+
+async def test_collect_facebook_skips_unknown_metric_and_saves_posts(engine, client):
+    stats = await collect(engine, client, today=TODAY, tz=KYIV, ig_user_id="ig1", page_id="page1")
+    assert stats["fb_days"] == 3
+    with Session(engine) as s:
+        fb = {
+            m.metric for m in s.scalars(select(MetricDaily).where(MetricDaily.source == "facebook"))
+        }
+        assert fb == {"page_media_view", "page_total_media_view_unique", "page_post_engagements"}
+        posts = {p.post_id: p for p in s.scalars(select(PostStat))}
+    assert (posts["m1"].media_type, posts["m1"].reach, posts["m1"].views) == ("REELS", 900, 2500)
+    assert posts["m1"].saved == 12 and posts["m2"].reach == 0  # без insights — не падаємо
+
+
+class FakeGoogle:
+    def __init__(self):
+        self.requests: list[httpx.Request] = []
+
+    def __call__(self, req: httpx.Request) -> httpx.Response:
+        self.requests.append(req)
+        if req.url.host == "oauth2.googleapis.com":
+            return httpx.Response(200, json={"access_token": "ya29", "expires_in": 3600})
+        body = json.loads(req.content)
+        if body.get("pageToken") == "n2":
+            return httpx.Response(200, json={"results": [
+                {"segments": {"date": "2026-11-19"}, "campaign": {"id": "42", "name": "Пошук"},
+                 "metrics": {"impressions": "300", "clicks": "30", "costMicros": "125500000",
+                             "conversions": 2.6}}]})  # fmt: skip
+        return httpx.Response(200, json={"results": [
+            {"segments": {"date": "2026-11-18"}, "campaign": {"id": "42", "name": "Пошук"},
+             "metrics": {"impressions": "200", "clicks": "10", "costMicros": "50000000"}}],
+            "nextPageToken": "n2"})  # fmt: skip
+
+
+async def test_google_ads_collect(engine):
+    fake = FakeGoogle()
+    g = GoogleAdsClient(
+        developer_token="dev", client_id="cid", client_secret="sec", refresh_token="rt",
+        customer_id="123-456-7890", login_customer_id="999",
+        http=httpx.AsyncClient(transport=httpx.MockTransport(fake)),
+    )  # fmt: skip
+    assert await google_ads.collect(engine, g, today=TODAY) == {"google_rows": 2}
+    search = [r for r in fake.requests if r.url.host == "googleads.googleapis.com"]
+    assert search[0].url.path == "/v22/customers/1234567890/googleAds:search"
+    assert search[0].headers["developer-token"] == "dev"
+    assert search[0].headers["login-customer-id"] == "999"
+    assert "BETWEEN '2026-11-17' AND '2026-11-19'" in json.loads(search[0].content)["query"]
+    assert sum(r.url.host == "oauth2.googleapis.com" for r in fake.requests) == 1  # токен кешується
+    with Session(engine) as s:
+        rows = s.scalars(select(AdDaily).order_by(AdDaily.day)).all()
+    assert [(r.platform, r.ad_id, r.spend_minor, r.clicks, r.conversations) for r in rows] == [
+        ("google", "42", 5000, 10, 0),
+        ("google", "42", 12550, 30, 3),
+    ]
+
+
+async def test_google_ads_bad_refresh_token(engine):
+    def handler(req):
+        return httpx.Response(400, json={"error": "invalid_grant"})
+
+    g = GoogleAdsClient(
+        developer_token="d", client_id="c", client_secret="s", refresh_token="r", customer_id="1",
+        http=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )  # fmt: skip
+    with pytest.raises(GoogleAdsError, match="REFRESH_TOKEN"):
+        await google_ads.collect(engine, g, today=TODAY)
+
+
+class GoogleVisits:
+    async def visits(self, d_from, d_to):  # noqa: ANN001
+        return [{"status": "completed", "paid_amount": 90000,
+                 "attribution": {"lead_source": "gads_42"}}]  # fmt: skip
+
+
+async def test_dashboard_google_campaign_attribution(engine):
+    with Session(engine) as s, s.begin():
+        s.add(AdDaily(day=date(2026, 11, 19), platform="google", ad_id="42", ad_name="Пошук",
+                      spend_minor=30000, clicks=5))  # fmt: skip
+        s.add(AdDaily(day=date(2026, 11, 19), platform="meta", ad_id="42", ad_name="Сторіс",
+                      spend_minor=1000))  # fmt: skip
+    db = await dashboard.build(engine, Settings(_env_file=None), NOW, mds=GoogleVisits())
+    by = {a.platform: a for a in db.ads}
+    assert by["google"].came == 1 and by["google"].cost_per_visit_minor == 30000
+    assert by["meta"].came == 0  # той самий id, інша платформа — не плутаємо

@@ -32,7 +32,24 @@ class Settings(BaseSettings):
     meta_token: str = ""
     meta_ig_user_id: str = ""  # Instagram professional account ID
     meta_ad_account_id: str = ""  # без префікса act_
+    meta_page_id: str = ""  # сторінка Facebook (перегляди, залучення)
     ad_currency: str = "UAH"
+
+    # Google Ads API (developers.google.com/google-ads/api): OAuth-клієнт + refresh token власника
+    google_ads_developer_token: str = ""
+    google_ads_client_id: str = ""
+    google_ads_client_secret: str = ""
+    google_ads_refresh_token: str = ""
+    google_ads_customer_id: str = ""  # 10 цифр без дефісів
+    google_ads_login_customer_id: str = ""  # MCC-акаунт, якщо доступ через нього
+    google_ads_api_version: str = "v22"
+
+    # AI-аналітик (Claude): щоденний звіт із порадами і контент-план на місяць
+    analyst_model: str = "claude-opus-5-5"
+    analyst_effort: str = "medium"  # low | medium | high
+    analyst_daily: bool = True  # щодня о 07:05 Київ після збору аналітики
+    content_plan_posts: int = 16  # постів на місяць (Instagram + Facebook)
+    content_plan_auto_day: int = 25  # цього числа — план на наступний місяць (0 — вимкнено)
 
     # Панель власника /panel (вхід за паролем)
     panel_password: str = ""
@@ -78,6 +95,18 @@ class Settings(BaseSettings):
     @classmethod
     def _empty_int(cls, v: object) -> object:
         return 0 if v == "" else v
+
+    @property
+    def google_ads_enabled(self) -> bool:
+        return all(
+            (
+                self.google_ads_developer_token,
+                self.google_ads_client_id,
+                self.google_ads_client_secret,
+                self.google_ads_refresh_token,
+                self.google_ads_customer_id,
+            )
+        )
 
     @property
     def zone(self) -> ZoneInfo:

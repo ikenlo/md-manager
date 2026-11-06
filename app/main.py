@@ -14,6 +14,7 @@ from fastapi import FastAPI, Request, Response
 
 from app import panel
 from app.agent.runner import Agent, make_client
+from app.ai.analyst import Hub
 from app.channels import instagram as ig
 from app.channels import telegram as tg
 from app.config import Settings, get_settings
@@ -35,9 +36,11 @@ class AppState:
     ig_handler: ig.InstagramHandler | None = None
     mds: Any = None
     tasks: list[asyncio.Task[Any]]
+    hub: Hub
 
 
 state = AppState()
+state.hub = Hub(None)
 
 
 @asynccontextmanager
@@ -108,8 +111,29 @@ async def lifespan(app: FastAPI):  # noqa: ANN201
         from app.analytics.meta import MetaClient
 
         meta = MetaClient(settings.meta_token, settings.meta_api_version)
+    google = None
+    if settings.google_ads_enabled:
+        from app.analytics.google_ads import GoogleAdsClient
+
+        google = GoogleAdsClient(
+            developer_token=settings.google_ads_developer_token,
+            client_id=settings.google_ads_client_id,
+            client_secret=settings.google_ads_client_secret,
+            refresh_token=settings.google_ads_refresh_token,
+            customer_id=settings.google_ads_customer_id,
+            login_customer_id=settings.google_ads_login_customer_id,
+            version=settings.google_ads_api_version,
+        )
     state.mds = mds
-    scheduler = Jobs(engine, settings, state.notifier, ig_client, meta=meta).start()
+    from app.ai.analyst import Analyst
+
+    analyst = None
+    if settings.anthropic_api_key:
+        analyst = Analyst(engine, settings, make_client(settings), mds=mds, dashboard=_dashboard)
+    state.hub.analyst = analyst
+    scheduler = Jobs(
+        engine, settings, state.notifier, ig_client, meta=meta, google=google, analyst=analyst
+    ).start()
 
     yield
 
@@ -141,7 +165,21 @@ async def _dashboard():  # noqa: ANN202
     return await build(get_engine(), state.settings, datetime.now(UTC), mds=state.mds)
 
 
-app.include_router(panel.build_router(lambda: state.settings, _dashboard))
+async def _day():  # noqa: ANN202
+    from datetime import UTC, datetime
+
+    from app.analytics.daily import build
+
+    return await build(get_engine(), state.settings, datetime.now(UTC), mds=state.mds)
+
+
+app.include_router(
+    panel.build_router(
+        lambda: state.settings,
+        _dashboard,
+        panel.PanelDeps(get_day=_day, hub=state.hub, get_engine=get_engine),
+    )
+)
 
 
 @app.get("/health")

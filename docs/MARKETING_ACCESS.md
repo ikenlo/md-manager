@@ -12,7 +12,19 @@
 | 3 | **Events Manager → набір даних Conversions API** | хвилини | передавати Meta, хто реально прийшов (офлайн-події) — реклама вчиться знаходити схожих |
 | 4 | **Google Business Profile API**: форма доступу з номером Cloud-проєкту | 1–4 тижні | перегляди на картах, дзвінки, маршрути, відгуки |
 | 5 | **TikTok for Business**: бізнес-акаунт → акаунт розробника → заявка на Marketing API і Accounts API | ~1–2 тижні | перегляди, залучення, реклама TikTok |
+| 7 | **Google Ads API**: у Google Ads → Інструменти → API Center отримати **developer token** (рівень Basic, заявка); у Google Cloud — OAuth-клієнт (Desktop) і **refresh token** власника акаунта (scope `https://www.googleapis.com/auth/adwords`) | 1–3 дні на Basic access | витрати, кліки й конверсії кампаній на панелі і в AI-звіті (`GOOGLE_ADS_*`) |
 | 6 | *(за потреби)* **Перевірка бізнесу Meta + App Review** для `instagram_manage_events` | 1–3 тижні | події з Direct у Conversions API |
+
+## Що бачить AI-аналітик
+
+Щоранку о 07:05 (Київ) Claude отримує **лише агрегати**: цифри вчорашнього дня проти середнього за
+7 днів (MDS Connect, Instagram, Facebook, Meta Ads, Google Ads), оголошення з ціною візиту за 30 днів,
+результати власних постів і каталог послуг з цінами. Імена, телефони й переписка клієнтів туди
+**не потрапляють**. Звіт — на /panel (блок «AI-аналітик») і коротко в адмін-групу.
+Контент-план на наступний місяць генерується 25-го числа (або кнопкою на /panel/content).
+Модель за замовчуванням — `claude-opus-5-5` (~$0.10 за звіт, ~$0.40 за план); дешевше —
+`ANALYST_MODEL=claude-sonnet-5-5`. Усе враховується в `AI_MONTHLY_BUDGET_USD`.
+Мітка для атрибуції записів з Google Ads — `gads_<campaign_id>` у посиланні на бота.
 
 ## Важливо
 

@@ -32,8 +32,12 @@ AI-адміністратор салону M&D: Instagram Direct + Telegram, з�
   звіт /sources — app/marketing.py.
 - AI для контенту — app/ai/: router.py (Gemini для масових текстів/картинок, Claude — аналіз),
   gemini.py (REST), prices.py, budget.py (місячний ліміт). Кожен платний виклик → ai_usage з cost_usd.
-- Аналітика — app/analytics/: meta.py (Graph API → metric_daily, ad_daily; щодня о 06:30 Київ),
-  dashboard.py (дані панелі; оголошення ↔ записи через мітку ig_ad_<id>). Панель — app/panel.py (/panel).
+- Аналітика — app/analytics/: meta.py (Graph API: IG, сторінка FB, пости → metric_daily, post_stats, ad_daily;
+  щодня о 06:30 Київ), google_ads.py (кампанії → ad_daily platform=google, о 06:40), daily.py (вчора vs
+  середнє 7 днів), dashboard.py (оголошення ↔ записи через мітки ig_ad_<id> / gads_<campaign_id>).
+- AI-аналітик — app/ai/analyst.py: Claude (ANALYST_MODEL) зі structured outputs → ai_report
+  (daily о 07:05, content_plan 25-го). У промпт — лише агрегати, ніколи імена/телефони клієнтів.
+- Панель — app/panel.py: /panel (день, AI-звіт, реклама, пости), /panel/content (контент-план з промптами).
 
 ## Команди
 - docker compose up -d — запуск

@@ -258,7 +258,10 @@ class MetricDaily(Base):
 
 
 class AdDaily(Base):
-    """Результати оголошення за день (Meta Ads). Гроші — у валюті рекламного акаунта, копійки."""
+    """Результати оголошення (Meta) або кампанії (Google Ads) за день.
+
+    Гроші — у валюті рекламного акаунта, копійки.
+    """
 
     __tablename__ = "ad_daily"
     __table_args__ = (UniqueConstraint("day", "platform", "ad_id"),)
@@ -273,5 +276,42 @@ class AdDaily(Base):
     reach: Mapped[int] = mapped_column(Integer, default=0)
     clicks: Mapped[int] = mapped_column(Integer, default=0)
     spend_minor: Mapped[int] = mapped_column(Integer, default=0)
-    conversations: Mapped[int] = mapped_column(Integer, default=0)  # розпочаті діалоги в Direct
+    # Meta: розпочаті діалоги в Direct; Google: конверсії
+    conversations: Mapped[int] = mapped_column(Integer, default=0)
     fetched_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class PostStat(Base):
+    """Результати власного поста (Instagram/Facebook): для аналізу, що заходить аудиторії."""
+
+    __tablename__ = "post_stats"
+    __table_args__ = (UniqueConstraint("platform", "post_id"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    platform: Mapped[str] = mapped_column(String(16))  # instagram | facebook
+    post_id: Mapped[str] = mapped_column(String(64))
+    published_at: Mapped[datetime] = mapped_column(UTCDateTime, index=True)
+    media_type: Mapped[str] = mapped_column(String(32), default="")  # REELS, CAROUSEL_ALBUM, ...
+    caption: Mapped[str] = mapped_column(String(300), default="")
+    permalink: Mapped[str] = mapped_column(String(300), default="")
+    likes: Mapped[int] = mapped_column(Integer, default=0)
+    comments: Mapped[int] = mapped_column(Integer, default=0)
+    reach: Mapped[int] = mapped_column(Integer, default=0)
+    views: Mapped[int] = mapped_column(Integer, default=0)
+    saved: Mapped[int] = mapped_column(Integer, default=0)
+    shares: Mapped[int] = mapped_column(Integer, default=0)
+    fetched_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow)
+
+
+class AiReport(Base):
+    """Результат AI-аналітика: щоденний звіт або контент-план на місяць (JSON)."""
+
+    __tablename__ = "ai_report"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    kind: Mapped[str] = mapped_column(String(16), index=True)  # daily | content_plan
+    period_start: Mapped[date] = mapped_column(Date, index=True)  # день звіту / 1-ше число місяця
+    model: Mapped[str] = mapped_column(String(64), default="")
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    payload: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, default=utcnow, index=True)

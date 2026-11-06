@@ -1,4 +1,4 @@
-"""Збір щоденної аналітики з Meta Graph API: Instagram-акаунт і Meta Ads.
+"""Щоденна аналітика з Meta Graph API: Instagram (акаунт і пости), сторінка Facebook, Meta Ads.
 
 Токен — System User з Business Manager (власні акаунти салону, App Review не потрібен).
 Instagram віддає дані із затримкою до 48 год, тому щодня перезбираємо кілька останніх днів.
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
@@ -16,12 +16,23 @@ import httpx
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
-from app.db.models import AdDaily, MetricDaily
+from app.db.models import AdDaily, MetricDaily, PostStat
 
 log = logging.getLogger(__name__)
 
 GRAPH = "https://graph.facebook.com"
 IG_DAY_METRICS = ("reach", "views", "profile_links_taps", "accounts_engaged", "total_interactions")
+# Meta з 11.2025 замінила page_impressions* на «перегляди» (page_media_view*)
+FB_DAY_METRICS = (
+    "page_media_view",
+    "page_total_media_view_unique",
+    "page_post_engagements",
+    "page_daily_follows_unique",
+)
+IG_MEDIA_FIELDS = (
+    "id,caption,media_type,media_product_type,timestamp,permalink,like_count,comments_count"
+)
+IG_MEDIA_METRICS = ("reach", "views", "saved", "shares")
 CONVERSATION_ACTION = "onsite_conversion.messaging_conversation_started_7d"
 
 
@@ -37,11 +48,14 @@ class MetaClient:
         self.token = token
         self.base = f"{GRAPH}/{version}"
         self.http = http or httpx.AsyncClient(timeout=30)
+        self._page_tokens: dict[str, str] = {}
 
-    async def _get(self, url: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    async def _get(
+        self, url: str, params: dict[str, Any] | None = None, token: str | None = None
+    ) -> dict[str, Any]:
         try:
             r = await self.http.get(
-                url, params=params, headers={"Authorization": f"Bearer {self.token}"}
+                url, params=params, headers={"Authorization": f"Bearer {token or self.token}"}
             )
         except httpx.HTTPError as e:
             raise MetaError(503, "Meta недоступна") from e
@@ -71,6 +85,70 @@ class MetaClient:
             elif row.get("values"):
                 out[row["name"]] = float(row["values"][-1].get("value") or 0)
         return out
+
+    async def fb_day(self, page_id: str, day: date, tz: ZoneInfo) -> dict[str, float]:
+        """Метрики сторінки Facebook за київську добу. Невідому метрику пропускаємо."""
+        token = await self._page_token(page_id)
+        start = int(datetime.combine(day, datetime.min.time(), tzinfo=tz).timestamp())
+
+        async def fetch(metrics: tuple[str, ...]) -> dict[str, float]:
+            data = await self._get(
+                f"{self.base}/{page_id}/insights",
+                {"metric": ",".join(metrics), "period": "day", "since": start,
+                 "until": start + 86400},
+                token,
+            )  # fmt: skip
+            out: dict[str, float] = {}
+            for row in data.get("data") or []:
+                vals = row.get("values") or []
+                if vals:
+                    out[row["name"]] = float(vals[-1].get("value") or 0)
+            return out
+
+        try:
+            return await fetch(FB_DAY_METRICS)
+        except MetaError as e:
+            if e.status != 400:
+                raise
+        out: dict[str, float] = {}
+        for m in FB_DAY_METRICS:
+            try:
+                out.update(await fetch((m,)))
+            except MetaError as e:
+                if e.status != 400:
+                    raise
+                log.warning("facebook metric unavailable: %s", m)
+        return out
+
+    async def _page_token(self, page_id: str) -> str:
+        # токен System User → токен сторінки (insights сторінки вимагають саме його)
+        if page_id not in self._page_tokens:
+            data = await self._get(f"{self.base}/{page_id}", {"fields": "access_token"})
+            self._page_tokens[page_id] = data.get("access_token") or self.token
+        return self._page_tokens[page_id]
+
+    async def ig_media(self, ig_user_id: str, limit: int = 15) -> list[dict[str, Any]]:
+        """Останні пости з лайками/коментарями та insights (охоплення, перегляди, збереження)."""
+        data = await self._get(
+            f"{self.base}/{ig_user_id}/media", {"fields": IG_MEDIA_FIELDS, "limit": limit}
+        )
+        items = data.get("data") or []
+        for it in items:
+            try:
+                ins = await self._get(
+                    f"{self.base}/{it['id']}/insights", {"metric": ",".join(IG_MEDIA_METRICS)}
+                )
+            except MetaError as e:
+                if e.status != 400:  # старі пости / сторіс без insights
+                    raise
+                ins = {}
+            it["insights"] = {
+                r["name"]: float((r.get("values") or [{}])[-1].get("value") or 0)
+                if r.get("values")
+                else float((r.get("total_value") or {}).get("value") or 0)
+                for r in ins.get("data") or []
+            }
+        return items
 
     async def ig_followers(self, ig_user_id: str) -> int:
         data = await self._get(f"{self.base}/{ig_user_id}", {"fields": "followers_count"})
@@ -108,6 +186,28 @@ def _upsert_metric(s: Session, day: date, source: str, metric: str, value: float
         row.value = value
 
 
+def save_post(s: Session, platform: str, it: dict[str, Any]) -> None:
+    row = s.scalar(
+        select(PostStat).where(PostStat.platform == platform, PostStat.post_id == it["id"])
+    )
+    if row is None:
+        row = PostStat(platform=platform, post_id=it["id"])
+        s.add(row)
+    ins = it.get("insights") or {}
+    row.published_at = datetime.fromisoformat(it["timestamp"].replace("+0000", "+00:00"))
+    kind = it.get("media_product_type") or ""
+    row.media_type = ("REELS" if kind == "REELS" else it.get("media_type") or "")[:32]
+    row.caption = (it.get("caption") or "")[:300]
+    row.permalink = (it.get("permalink") or "")[:300]
+    row.likes = int(it.get("like_count") or 0)
+    row.comments = int(it.get("comments_count") or 0)
+    row.reach = int(ins.get("reach") or 0)
+    row.views = int(ins.get("views") or 0)
+    row.saved = int(ins.get("saved") or 0)
+    row.shares = int(ins.get("shares") or 0)
+    row.fetched_at = datetime.now(UTC)
+
+
 def _minor(amount: str | float | None) -> int:
     return round(float(amount or 0) * 100)
 
@@ -128,11 +228,20 @@ async def collect(
     tz: ZoneInfo,
     ig_user_id: str = "",
     ad_account_id: str = "",
+    page_id: str = "",
     days_back: int = 3,
 ) -> dict[str, int]:
     """Зібрати й зберегти дані за останні days_back днів (без сьогоднішнього, він неповний)."""
     days = [today - timedelta(days=i) for i in range(days_back, 0, -1)]
     stats = {"ig_days": 0, "ad_rows": 0}
+    if page_id:
+        stats["fb_days"] = 0
+        for d in days:
+            values = await client.fb_day(page_id, d, tz)
+            with Session(engine) as s, s.begin():
+                for metric, value in values.items():
+                    _upsert_metric(s, d, "facebook", metric, value)
+            stats["fb_days"] += 1
     if ig_user_id:
         for d in days:
             values = await client.ig_day(ig_user_id, d, tz)
@@ -143,6 +252,11 @@ async def collect(
         followers = await client.ig_followers(ig_user_id)
         with Session(engine) as s, s.begin():
             _upsert_metric(s, today, "instagram", "followers_count", followers)
+        media = await client.ig_media(ig_user_id)
+        with Session(engine) as s, s.begin():
+            for it in media:
+                save_post(s, "instagram", it)
+        stats["posts"] = len(media)
     if ad_account_id:
         rows = await client.ads_daily(ad_account_id, days[0], days[-1])
         with Session(engine) as s, s.begin():

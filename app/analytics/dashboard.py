@@ -29,6 +29,12 @@ class AdRow:
     bookings: int = 0
     came: int = 0
     revenue_kop: int = 0
+    platform: str = "meta"
+
+    @property
+    def label(self) -> str:
+        """Мітка джерела, за якою записи привʼязуються до оголошення / кампанії."""
+        return f"gads_{self.ad_id}" if self.platform == "google" else f"ig_ad_{self.ad_id}"
 
     @property
     def cost_per_visit_minor(self) -> int | None:
@@ -82,6 +88,7 @@ async def build(
     with Session(engine) as s:
         agg = s.execute(
             select(
+                AdDaily.platform,
                 AdDaily.ad_id,
                 func.max(AdDaily.ad_name),
                 func.max(AdDaily.campaign_name),
@@ -91,12 +98,13 @@ async def build(
                 func.sum(AdDaily.conversations),
             )
             .where(AdDaily.day >= d_from, AdDaily.day <= d_to)
-            .group_by(AdDaily.ad_id)
+            .group_by(AdDaily.platform, AdDaily.ad_id)
         ).all()
         ads = []
-        for ad_id, name, camp, spend, imp, clk, conv in agg:
+        for platform, ad_id, name, camp, spend, imp, clk, conv in agg:
             row = AdRow(ad_id, name or ad_id, camp or "", spend or 0, imp or 0, clk or 0, conv or 0)
-            src = by_label.get(f"ig_ad_{ad_id}")
+            row.platform = platform
+            src = by_label.get(row.label)
             if src:
                 row.bookings, row.came, row.revenue_kop = src.bookings, src.came, src.revenue_kop
             ads.append(row)
