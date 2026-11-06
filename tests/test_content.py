@@ -270,3 +270,18 @@ async def test_monthly_ideas_notify(engine, media):
     await jobs.monthly_plan()
     assert "Ідеї на 12.2026 готові: 21" in sent[0]
     assert "https://bot.md.ua/#/content" in sent[0]
+
+
+def test_before_after_compose_and_labels():
+    from app.content.beforeafter import SIZE, compose
+
+    out = Image.open(
+        io.BytesIO(compose(jpeg(1200, 900, (200, 150, 100)), jpeg(800, 1200, (90, 60, 40))))
+    )
+    assert out.size == SIZE
+    w, h = SIZE
+    left, right = out.getpixel((w // 4, h // 2)), out.getpixel((3 * w // 4, h // 2))
+    assert left[0] > 150 and right[0] < 120  # «до» ліворуч, «після» праворуч, кольори не змінено
+    assert abs(left[0] - 200) < 12 and abs(right[0] - 90) < 12
+    tag = out.getpixel((40, 40))
+    assert tag[1] > tag[0] and tag[1] < 120  # темно-зелена плашка підпису «ДО»
