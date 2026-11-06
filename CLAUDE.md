@@ -40,9 +40,13 @@ AI-адміністратор салону M&D: Instagram Direct + Telegram, з�
   app/ai/claude_json.py, фонові задачі з сайту — app/ai/jobs.py.
 - Контент-план — app/content/: schedule.py (слоти: пост щотижня, сторіс раз на 2 дні — рахує код),
   studio.py (ідеї, підтвердити/відхилити: 3-тє відхилення → нова тема; фото салону → Gemini трохи
-  підправляє, результат послуги не змінюється), storage.py (фото без EXIF), web.py (/panel/content).
-  Відео не робимо. Ідеї на наступний місяць — 25-го.
-- Панель — app/panel.py (/panel). Стилі нових сторінок — app/web_style.py (токени MDS Connect).
+  підправляє, результат послуги не змінюється), storage.py (фото без EXIF). Відео не робимо.
+- Веб-застосунок MDS Manager — app/web/: static/ (SPA на дизайні MDS Connect: style.css і шрифти
+  скопійовані з ikenlo/m-d, app.js — VIEWS/NAV, DOM лише через h()), api.py (/api/*), session.py
+  (вхід логіном MDS Connect; director → owner, admin → admin без грошей/реклами; майстрам — ні).
+- app/core/: audit.py (журнал дій — кожна дія людини чи AI), approvals.py (черга погоджень:
+  публікація, розсилка, реклама — лише після «Підтвердити»).
+- Роадмап і що вирізано з MyChatBot — docs/PLATFORM_PLAN.md. Стара /panel → редирект на /.
 
 ## Команди
 - docker compose up -d — запуск

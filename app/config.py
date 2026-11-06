@@ -57,8 +57,11 @@ class Settings(BaseSettings):
     content_plan_auto_day: int = 25  # цього числа — ідеї на наступний місяць (0 — вимкнено)
     media_dir: str = "./data/media"  # фото салону й оброблені версії
 
-    # Панель власника /panel (вхід за паролем)
+    # Вхід у MDS Manager: логіни MDS Connect (якщо задано MDS_URL); без MDS — пароль власника
     panel_password: str = ""
+    # підпис cookie сесії (openssl rand -hex 32); порожньо → сесії діють до перезапуску
+    session_secret: str = ""
+    session_days: int = 14
 
     # Instagram
     ig_access_token: str = ""

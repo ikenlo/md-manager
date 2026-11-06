@@ -12,19 +12,19 @@ from aiogram import Bot, Dispatcher
 from aiogram.types import Update
 from fastapi import FastAPI, Request, Response
 
-from app import panel
 from app.agent.runner import Agent, make_client
 from app.ai.analyst import Hub
 from app.ai.jobs import Background
 from app.channels import instagram as ig
 from app.channels import telegram as tg
 from app.config import Settings, get_settings
-from app.content import web as content_web
 from app.db.models import Channel
 from app.db.session import get_engine
 from app.dialog import Dialog
 from app.notify import Notifier
 from app.scheduler import Jobs
+from app.web import api as web_api
+from app.web import static as web_static
 
 log = logging.getLogger("mds")
 
@@ -191,15 +191,19 @@ async def _day():  # noqa: ANN202
 
 
 app.include_router(
-    panel.build_router(
-        lambda: state.settings,
-        _dashboard,
-        panel.PanelDeps(get_day=_day, hub=state.hub, get_engine=get_engine),
+    web_api.build_router(
+        web_api.Ctx(
+            settings=lambda: state.settings,
+            engine=get_engine,
+            studio=lambda: state.studio,
+            jobs=state.content_jobs,
+            hub=state.hub,
+            dashboard=_dashboard,
+            day=_day,
+        )
     )
 )
-app.include_router(
-    content_web.build_router(lambda: state.settings, lambda: state.studio, state.content_jobs)
-)
+web_static.mount(app)
 
 
 @app.get("/health")

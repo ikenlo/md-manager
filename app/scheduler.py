@@ -104,7 +104,7 @@ class Jobs:
 
     def _panel_link(self, path: str) -> str:
         base = self.settings.public_url.rstrip("/")
-        return f"\n\nДеталі: {base}{path}" if base else "\n\nДеталі — на панелі /panel."
+        return f"\n\nДеталі: {base}{path}" if base else "\n\nДеталі — у MDS Manager."
 
     async def daily_analysis(self) -> None:
         if self.analyst is None or not self.settings.analyst_daily:
@@ -120,7 +120,7 @@ class Jobs:
         text = f"📊 Звіт за {report.period_start:%d.%m}\n\n{d.get('summary', '')}"
         if top:
             text += "\n\nЩо зробити:\n" + "\n".join(f"• {t}" for t in top)
-        await self.notifier.admin(text + self._panel_link("/panel#ai"))
+        await self.notifier.admin(text + self._panel_link("/#/overview"))
 
     async def monthly_plan(self) -> None:
         """Ідеї постів і сторіс на наступний місяць — власник підтверджує їх на сайті."""
@@ -138,8 +138,7 @@ class Jobs:
         if n:
             await self.notifier.admin(
                 f"🗓 Ідеї на {month:%m.%Y} готові: {n} постів і сторіс чекають вашого "
-                "«Підтвердити» або «Відхилити»."
-                + self._panel_link(f"/panel/content?m={month:%Y-%m}")
+                "«Підтвердити» або «Відхилити»." + self._panel_link("/#/content")
             )
 
     async def cleanup(self) -> None:

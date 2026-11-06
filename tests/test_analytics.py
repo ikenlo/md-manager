@@ -5,12 +5,9 @@ from datetime import UTC, date, datetime
 
 import httpx
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app import panel
 from app.analytics import dashboard, google_ads
 from app.analytics.google_ads import GoogleAdsClient, GoogleAdsError
 from app.analytics.meta import MetaClient, MetaError, collect
@@ -181,43 +178,12 @@ async def test_dashboard_links_ads_to_visits(engine, client):
     assert db.totals == {"bookings": 4, "came": 3, "no_show": 1, "revenue_kop": 450000}
     assert db.followers == 1234 and len(db.ig_series["reach"]) == 3
     assert db.ai_month_total == pytest.approx(0.5)
-    html = panel.render(db)
-    assert "Блонд &lt;b&gt;" in html and "Блонд <b>" not in html
-    assert "150 грн" in html and "4 500 грн" in html and "$0.50 з $30" in html
-    assert "<td>Блонд &lt;b&gt;</td>" in html  # джерело ig_ad_555 показане назвою оголошення
 
 
 async def test_dashboard_without_meta_or_mds(engine):
     db = await dashboard.build(engine, Settings(_env_file=None), NOW)
     assert db.ads == [] and db.followers is None
     assert any("Meta не підключено" in n for n in db.notes)
-    assert "Даних Instagram ще немає" in panel.render(db)
-
-
-def _app(settings, db):
-    async def get_db():
-        return db
-
-    app = FastAPI()
-    app.include_router(panel.build_router(lambda: settings, get_db))
-    return TestClient(app, base_url="https://testserver")
-
-
-async def test_panel_login(engine):
-    db = await dashboard.build(engine, Settings(_env_file=None), NOW)
-    off = _app(Settings(_env_file=None), db)
-    assert off.get("/panel").status_code == 404
-    c = _app(Settings(_env_file=None, panel_password="s3cret-pass"), db)
-    r = c.get("/panel")
-    assert r.status_code == 200 and "Пароль" in r.text and "Звідки записи" not in r.text
-    assert c.post("/panel/login", data={"password": "nope"}).status_code == 401
-    r = c.post("/panel/login", data={"password": "s3cret-pass"}, follow_redirects=False)
-    assert r.status_code == 303 and "httponly" in r.headers["set-cookie"].lower()
-    r = c.get("/panel")
-    assert "Звідки записи" in r.text and "Реклама: що окупається" in r.text
-    c.cookies.clear()
-    c.cookies.set(panel.COOKIE, "forged")
-    assert "Звідки записи" not in c.get("/panel").text
 
 
 async def test_collect_facebook_skips_unknown_metric_and_saves_posts(engine, client):

@@ -5,17 +5,12 @@ import json
 from datetime import UTC, date, datetime
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app import panel
 from app.ai.gemini import ImageResult
-from app.ai.jobs import Background
 from app.config import Settings
-from app.content import web
 from app.content.schedule import month_slots
 from app.content.storage import Media, PhotoError
 from app.content.studio import MAX_REJECTIONS, Studio
@@ -78,11 +73,6 @@ def make(engine, media, *steps, gemini=True, **kw):
 
 
 # --- розклад ------------------------------------------------------------------
-
-
-def test_plural():
-    assert [web.plural(n, "пост", "пости", "постів") for n in (1, 4, 5, 11, 21, 22)] == [
-        "1 пост", "4 пости", "5 постів", "11 постів", "21 пост", "22 пости"]  # fmt: skip
 
 
 def test_slots_week_post_and_story_every_two_days():
@@ -279,103 +269,4 @@ async def test_monthly_ideas_notify(engine, media):
                 clock=lambda: NOW, studio=st)  # fmt: skip
     await jobs.monthly_plan()
     assert "Ідеї на 12.2026 готові: 21" in sent[0]
-    assert "https://bot.md.ua/panel/content?m=2026-12" in sent[0]
-
-
-# --- сторінка -----------------------------------------------------------------
-
-
-def client(engine, st, jobs=None):
-    s = settings(panel_password="pass-1234")
-    st.settings = s
-    app = FastAPI()
-    app.include_router(panel.build_router(lambda: s, None))
-    jobs = jobs or Background()
-    app.include_router(web.build_router(lambda: s, lambda: st, jobs, lambda: NOW))
-    c = TestClient(app, base_url="https://testserver")
-    c.jobs = jobs
-    return c
-
-
-def login(c):
-    c.post("/panel/login", data={"password": "pass-1234"}, follow_redirects=False)
-    return c
-
-
-async def test_page_requires_login(engine, media):
-    st, _ = make(engine, media)
-    pid = st.add_photo(jpeg())
-    name = st.photos()[0].file
-    c = client(engine, st)
-    assert "Пароль" in c.get("/panel/content").text
-    assert c.get(f"/panel/content/media/{name}").status_code == 200  # сторінка входу, не фото
-    assert "image" not in c.get(f"/panel/content/media/{name}").headers["content-type"]
-    r = c.post(f"/panel/content/photos/{pid}/delete", follow_redirects=False)
-    assert r.headers["location"] == "/panel" and st.photos()
-
-
-async def test_page_flow(engine, media):
-    st, _ = make(engine, media)
-    with client(engine, st) as c:
-        login(c)
-        html = c.get("/panel/content?m=2026-12").text
-        assert "грудень 2026" in html and "5 постів (щочетверга) і 16 сторіс (раз на 2 дні)" in html
-        assert "Згенерувати ідеї · 21" in html and "Як це працює" in html
-
-        r = c.post("/panel/content/photos", data={"month": "2026-12"},
-                   files=[("files", ("a.jpg", jpeg(), "image/jpeg")),
-                          ("files", ("b.txt", b"hello", "text/plain"))],
-                   follow_redirects=False)  # fmt: skip
-        assert r.status_code == 303 and "msg=" in r.headers["location"]  # b.txt відхилено
-        assert len(st.photos()) == 1
-        pid = st.photos()[0].id
-
-        iid = add_item(engine, photo_id=None)
-        with Session(engine) as s, s.begin():
-            s.get(ContentItem, iid).caption = "Текст <b>жирно</b>"
-        html = c.get("/panel/content?m=2026-12").text
-        assert "Текст &lt;b&gt;жирно&lt;/b&gt;" in html and "<b>жирно" not in html
-        assert "Підтвердити" in html and "Відхилити" in html and "Потрібне фото" in html
-
-        r = c.post(f"/panel/content/items/{iid}/approve", follow_redirects=False)
-        assert r.headers["location"] == f"/panel/content?m=2026-12#item-{iid}"
-        html = c.get("/panel/content?m=2026-12&f=approved").text
-        assert "Взяти це фото" in html and "Відхилити" not in html
-
-        c.post(f"/panel/content/items/{iid}/photo", data={"photo_id": pid})
-        await_jobs(c)
-        html = c.get("/panel/content?m=2026-12").text
-        assert "Після обробки AI" in html and "Фото підходить" in html
-
-        c.post(f"/panel/content/items/{iid}/image/approve")
-        html = c.get("/panel/content?m=2026-12").text
-        assert "Завантажити фото" in html and "Опубліковано ✓" in html
-        with Session(engine) as s:
-            img = s.get(ContentItem, iid).image_file
-        r = c.get(f"/panel/content/media/{img}?download=1")
-        assert r.headers["content-type"] == "image/jpeg"
-        assert "attachment" in r.headers["content-disposition"]
-        assert c.get("/panel/content/media/..%2F..%2Fsecret").status_code == 404
-
-
-async def test_page_reject_runs_rework(engine, media):
-    st, claude = make(engine, media, message(idea(topic="Новий кут")))
-    iid = add_item(engine)
-    with client(engine, st) as c:
-        login(c)
-        c.post(f"/panel/content/items/{iid}/reject", data={"reason": "Задовгий текст"})
-        await_jobs(c)
-        html = c.get("/panel/content?m=2026-12").text
-    assert "Новий кут" in html and "Відхилень цієї теми: 1 з 3" in html
-    assert "Задовгий текст" in claude.requests[0]["messages"][0]["content"]
-
-
-def await_jobs(c):
-    """Фонові задачі живуть у циклі подій TestClient — чекаємо, поки вони завершаться."""
-    import time
-
-    for _ in range(300):
-        if not c.jobs.running:
-            return
-        time.sleep(0.01)
-    raise AssertionError(f"задачі не завершились: {c.jobs.running}")
+    assert "https://bot.md.ua/#/content" in sent[0]
