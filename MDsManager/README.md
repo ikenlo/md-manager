@@ -123,6 +123,19 @@ data/                                   # SQLite (mds.db)
 **WebSocket** `/api/ws?token=…`: сервер кожні 30 с шле `{"type":"ping"}` і перевіряє, чи сесія ще чинна;
 клієнт може слати `{"type":"ping"}` → `{"type":"pong"}`. Фронтенд перепідключається сам (1, 2, 4 … 30 с).
 
+### AI Endpoints (Phase 3)
+
+Відповідь AI клієнту не йде, доки адміністратор її не погодить (human-in-the-loop). Потрібен Bearer.
+
+| Метод | Шлях | Що робить |
+|---|---|---|
+| POST | `/api/dialogues/{uuid}/ai/respond` | AI читає останні 10 повідомлень і готує відповідь → `{suggestion_uuid, content, intent, needs_approval, proposed_booking}`; зберігається як pending, клієнту нічого не надсилається. AI вимкнено → `503` |
+| GET | `/api/dialogues/{uuid}/ai/pending` | поточна pending-пропозиція або `{"suggestion": null}` |
+| POST | `/api/dialogues/{uuid}/ai/{suggestion_uuid}/approve` | `{message_text?}` → створює запис (якщо є `proposed_booking`), надсилає клієнту текст: `message_text`, або для запису «Вас записано на {послуга} {ДД.ММ.РРРР} о {час}. Чекаємо вас! 😊», або текст AI. Помилка запису / не pending → `400`, нічого не надіслано |
+| POST | `/api/dialogues/{uuid}/ai/{suggestion_uuid}/reject` | `{reason?}` → `rejected`; клієнту нічого не надсилається |
+
+Pending-пропозиції старші за 24 год щогодини стають `expired`.
+
 ### Тестові ендпоінти (DEV only, MOCK_META=true required)
 
 Підключаються лише при `MOCK_META=true` і `APP_ENV=development`; потрібен Bearer. У `npm run dev` є dev-панель
