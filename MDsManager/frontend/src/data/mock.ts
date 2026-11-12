@@ -1,5 +1,6 @@
 // Демо-дані для оболонки «Діалоги» (Фаза 1, до підключення реального API).
 // Час рахується відносно моменту завантаження, щоб список показував «сьогодні».
+// Вхідні: delivered (ще не прочитано) / read; вихідні: sent. Системні нотатки — без direction/status.
 import type { Dialogue, Message } from '../types';
 
 const ago = (minutes: number): string => new Date(Date.now() - minutes * 60_000).toISOString();
@@ -13,30 +14,44 @@ export const mockMessages: Record<string, Message[]> = {
     {
       uuid: 'demo-msg-olena-1',
       sender_type: 'client',
+      direction: 'inbound',
+      status: 'read',
       content: 'Добрий день! Хочу записатися на манікюр з покриттям.',
       created_at: ago(48),
     },
     {
       uuid: 'demo-msg-olena-2',
       sender_type: 'agent',
+      direction: 'outbound',
+      status: 'sent',
       content: 'Вітаю, Олено! Манікюр з покриттям — 650 грн, триває близько 1,5 год. На який день вам зручно?',
       created_at: ago(47),
     },
     {
       uuid: 'demo-msg-olena-3',
       sender_type: 'client',
-      content: 'А можна одразу з дизайном на два нігті?',
+      direction: 'inbound',
+      status: 'read',
+      content: 'А можна одразу з дизайном на два нігті? Ось приклади 👇',
       created_at: ago(30),
+      attachments: [
+        { url: '/mock-attachment.png', type: 'image/png', name: 'design-1.png', size: 70 },
+        { url: '/mock-attachment.png', type: 'image/png', name: 'design-2.png', size: 70 },
+      ],
     },
     {
       uuid: 'demo-msg-olena-4',
       sender_type: 'human',
+      direction: 'outbound',
+      status: 'sent',
       content: 'Так, звісно! Дизайн +50 грн за ніготь, майстер Ірина зробить 😊',
       created_at: ago(20),
     },
     {
       uuid: 'demo-msg-olena-5',
       sender_type: 'client',
+      direction: 'inbound',
+      status: 'delivered',
       content: 'Дякую! Підкажіть, чи є вільний час на четвер після 17:00?',
       created_at: ago(5),
     },
@@ -45,18 +60,24 @@ export const mockMessages: Record<string, Message[]> = {
     {
       uuid: 'demo-msg-maria-1',
       sender_type: 'client',
+      direction: 'inbound',
+      status: 'read',
       content: 'Доброго дня!',
       created_at: ago(16),
     },
     {
       uuid: 'demo-msg-maria-2',
       sender_type: 'agent',
+      direction: 'outbound',
+      status: 'sent',
       content: 'Вітаємо в M&D! Чим можемо допомогти?',
       created_at: ago(15),
     },
     {
       uuid: 'demo-msg-maria-3',
       sender_type: 'client',
+      direction: 'inbound',
+      status: 'delivered',
       content: 'Доброго дня, скільки коштує педикюр?',
       created_at: ago(12),
     },
@@ -65,18 +86,24 @@ export const mockMessages: Record<string, Message[]> = {
     {
       uuid: 'demo-msg-iryna-1',
       sender_type: 'client',
+      direction: 'inbound',
+      status: 'read',
       content: 'Привіт! Є вільне віконце на стрижку завтра зранку?',
       created_at: ago(190),
     },
     {
       uuid: 'demo-msg-iryna-2',
       sender_type: 'agent',
+      direction: 'outbound',
+      status: 'sent',
       content: 'Вітаю, Ірино! Завтра є 10:00 та 11:30 у майстра Олександри. Записати вас?',
       created_at: ago(188),
     },
     {
       uuid: 'demo-msg-iryna-3',
       sender_type: 'client',
+      direction: 'inbound',
+      status: 'read',
       content: 'Так, записуюсь на завтра о 10:00',
       created_at: ago(180),
     },
@@ -103,7 +130,7 @@ export const mockDialogues: Dialogue[] = [
     tags: ['манікюр'],
     last_message_at: lastAt(OLENA),
     preview: 'Дякую! Підкажіть, чи є вільний час на четвер після 17:00?',
-    unread: 1,
+    unread_count: 1,
     ai_active: false,
   },
   {
@@ -114,7 +141,7 @@ export const mockDialogues: Dialogue[] = [
     tags: ['педикюр'],
     last_message_at: lastAt(MARIA),
     preview: 'Доброго дня, скільки коштує педикюр?',
-    unread: 1,
+    unread_count: 1,
     ai_active: true,
   },
   {
@@ -125,7 +152,7 @@ export const mockDialogues: Dialogue[] = [
     tags: ['стрижка'],
     last_message_at: lastAt(IRYNA),
     preview: 'Так, записуюсь на завтра о 10:00',
-    unread: 0,
+    unread_count: 0,
     ai_active: true,
   },
 ];

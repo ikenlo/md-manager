@@ -1,6 +1,15 @@
 export type ChannelType = 'instagram' | 'facebook' | 'telegram';
 export type DialogueStatus = 'new' | 'in_progress' | 'ordered' | 'lost';
 export type SenderType = 'client' | 'agent' | 'human' | 'system';
+export type MessageStatus = 'queued' | 'sent' | 'delivered' | 'read' | 'failed';
+export type MessageDirection = 'inbound' | 'outbound';
+
+export interface Attachment {
+  url: string;
+  type: string; // MIME, напр. 'image/png'
+  name: string;
+  size: number; // байти
+}
 
 export interface User {
   uuid: string;
@@ -21,6 +30,9 @@ export interface Message {
   sender_type: SenderType;
   content: string;
   created_at: string;
+  status?: MessageStatus;
+  direction?: MessageDirection;
+  attachments?: Attachment[];
 }
 
 export interface Dialogue {
@@ -31,7 +43,7 @@ export interface Dialogue {
   tags: string[];
   last_message_at: string;
   preview: string;
-  unread: number;
+  unread_count: number;
   ai_active: boolean;
 }
 

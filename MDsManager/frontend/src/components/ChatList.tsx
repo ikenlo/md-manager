@@ -98,7 +98,7 @@ export default function ChatList() {
                     <span className="truncate text-[15px] font-bold text-ink">{d.client.name}</span>
                     <span className="ml-auto shrink-0 text-xs text-ink-3">{listTime(d.last_message_at)}</span>
                   </div>
-                  <p className={`mt-0.5 truncate text-[13px] ${d.unread ? 'font-semibold text-ink' : 'text-ink-2'}`}>
+                  <p className={`mt-0.5 truncate text-[13px] ${d.unread_count ? 'font-semibold text-ink' : 'text-ink-2'}`}>
                     {d.preview}
                   </p>
                   <div className="mt-1.5 flex items-center gap-2">
@@ -108,9 +108,9 @@ export default function ChatList() {
                         Людина
                       </span>
                     )}
-                    {d.unread > 0 && (
+                    {d.unread_count > 0 && (
                       <span className="ml-auto min-w-[20px] rounded-full bg-gold px-1.5 text-center text-[11px] font-bold leading-5 text-surface">
-                        {d.unread}
+                        {d.unread_count}
                       </span>
                     )}
                   </div>

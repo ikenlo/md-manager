@@ -27,7 +27,7 @@ export const useInbox = create<InboxState>((set, get) => ({
   select: (id) =>
     set((s) => ({
       activeId: id,
-      dialogues: s.dialogues.map((d) => (d.uuid === id ? { ...d, unread: 0 } : d)),
+      dialogues: s.dialogues.map((d) => (d.uuid === id ? { ...d, unread_count: 0 } : d)),
     })),
   setFilter: (filter) => set({ filter }),
   setSearch: (search) => set({ search }),
@@ -37,7 +37,14 @@ export const useInbox = create<InboxState>((set, get) => ({
     const content = text.trim();
     if (!id || !content) return;
     const now = new Date().toISOString();
-    const msg: Message = { uuid: crypto.randomUUID(), sender_type: 'human', content, created_at: now };
+    const msg: Message = {
+      uuid: crypto.randomUUID(),
+      sender_type: 'human',
+      content,
+      created_at: now,
+      direction: 'outbound',
+      status: 'sent',
+    };
     set((s) => ({
       messages: { ...s.messages, [id]: [...(s.messages[id] ?? []), msg] },
       dialogues: s.dialogues
