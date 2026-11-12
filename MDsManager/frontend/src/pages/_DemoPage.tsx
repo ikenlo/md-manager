@@ -110,6 +110,8 @@ const AI_DEMO: AISuggestion[] = [
     },
     status: 'pending',
     created_at: '2026-11-12T10:00:00Z',
+    // як повертає сервер (build_confirmation_text): для запису — готове підтвердження
+    suggested_message: 'Вас записано на Манікюр 01.12.2026 о 10:00. Чекаємо вас! 😊',
   },
   {
     uuid: 'demo-ai-question',
@@ -119,6 +121,7 @@ const AI_DEMO: AISuggestion[] = [
     proposed_booking: null,
     status: 'pending',
     created_at: '2026-11-12T10:05:00Z',
+    suggested_message: 'Манікюр з покриттям коштує 350 грн і триває близько години 😊',
   },
 ];
 

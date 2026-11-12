@@ -80,6 +80,8 @@ export interface AISuggestion {
   proposed_booking: AIProposedBooking | null;
   status: AISuggestionStatus;
   created_at: string;
+  /** Text the client receives on approve without edits (booking → ready confirmation). Built by the server. */
+  suggested_message: string;
   resolved_at?: string;
   resolved_by_user_id?: number;
 }
@@ -90,6 +92,7 @@ export interface AIRespondResult {
   intent: AIIntent;
   needs_approval: boolean;
   proposed_booking: AIProposedBooking | null;
+  suggested_message: string;
 }
 
 export interface AIApproveResult {

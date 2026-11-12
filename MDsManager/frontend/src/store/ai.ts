@@ -95,6 +95,7 @@ export const useAIStore = create<AIState>((set, get) => ({
         status: 'pending',
         // відповідь /respond без часу створення — достатньо часу браузера
         created_at: new Date().toISOString(),
+        suggested_message: r.suggested_message,
       };
       set((s) => ({ pendingByDialogue: { ...s.pendingByDialogue, [dialogueUuid]: suggestion } }));
       return suggestion;

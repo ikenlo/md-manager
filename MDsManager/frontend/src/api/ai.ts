@@ -15,6 +15,7 @@ interface ApiPendingSuggestion {
   proposed_booking: AISuggestion['proposed_booking'] | null;
   status: AISuggestion['status'];
   created_at: string;
+  suggested_message: string;
 }
 
 const base = (dialogueUuid: string) => `/api/dialogues/${dialogueUuid}/ai`;
@@ -43,6 +44,7 @@ export async function aiGetPending(dialogueUuid: string): Promise<AISuggestion |
     proposed_booking: raw.proposed_booking ?? null,
     status: raw.status,
     created_at: raw.created_at,
+    suggested_message: raw.suggested_message,
   };
 }
 
