@@ -46,6 +46,34 @@ npm run dev
 Vite проксіює `/api` на `localhost:8000`. Якщо бекенд не запущено, ці ж облікові дані відкривають
 демо-режим (позначка внизу праворуч). Список і чат у Фазі 1 — демо-дані з `src/data/mock.ts`.
 
+## AI Configuration (Phase 3)
+
+### Local LLM (Ollama)
+MDs Manager uses Qwen3 via Ollama for AI Sales Agent. Runs locally on your GPU.
+
+Setup on Windows PC:
+1. Install Ollama: https://ollama.com/download
+2. Pull model: `ollama pull qwen3:14b` (needs ~9 GB VRAM)
+   Smaller option: `ollama pull qwen3:8b` (~5 GB VRAM)
+3. Ensure Ollama is running: `ollama serve`
+4. In `backend/.env` set: `MOCK_OLLAMA=false`, `OLLAMA_MODEL=qwen3:14b`
+5. Restart backend: `uvicorn app.main:app --reload`
+
+### Customizing AI tone and rules
+Edit `backend/prompts/sales_agent.md` (Ukrainian, plain text).
+After editing: restart backend (`reload_sales_prompt()` is not called automatically yet).
+No code changes needed — prompt is data, not logic.
+
+### Testing AI without Ollama
+Default: `MOCK_OLLAMA=true` (returns test responses, no GPU needed).
+Good for UI development and CI.
+
+### Verifying Ollama is reachable
+```powershell
+curl http://localhost:11434/api/tags
+```
+Expected: JSON with list of models including `qwen3:14b`.
+
 ## Перевірки
 
 ```powershell

@@ -60,6 +60,33 @@
 - Mock-дані (`src/data/mock.ts`) лишились тільки для демо-входу без бекенда (dev).
 - Вкладення роздаються за UUID без Bearer (`<img>` не вміє заголовки) — як посилання CDN Meta.
 
+## Phase 3 Part 1 (COMPLETE — AI foundation)
+
+### What was done
+- OllamaAdapter interface (async chat with tools support)
+- MockOllamaAdapter (delay, `__FAIL__` / `__TOOL_CALL__` markers for testing)
+- RealOllamaAdapter (httpx.AsyncClient, 120s timeout, strips `<think>` tags, `health()` method)
+- Factory: `get_ollama_adapter()` based on `MOCK_OLLAMA` env
+- System prompt: `backend/prompts/sales_agent.md` (editable file, Ukrainian, salon tone, all services; 1591 chars)
+- Loader: `services/ai_prompt.py` with `lru_cache` + `reload_sales_prompt()`
+- Config: 7 `OLLAMA_*` env vars (enabled, mock, host, model, timeout, temperature, num_ctx)
+- Error classes: `OllamaError`, `OllamaDisabledError`
+- `httpx` moved from dev to runtime dependencies in `requirements.txt`
+
+### Tests
+- 19 tests for adapters (`tests/test_ollama_adapters.py`): mock + real with `httpx.MockTransport`; 18 run, 1 integration test skipped
+- 10 new tests for prompt loader (`tests/test_ai_prompt.py`)
+- Total: 99 passed, 1 skipped (integration test skipped without Ollama in container)
+
+### Known limitations (to fix in later phases)
+- `reload_sales_prompt()` exists but is not called automatically; after editing prompt, restart backend
+- No `/api/admin/reload-prompt` endpoint yet (planned for Phase 3 Part 3 or later)
+- Integration test with real Ollama requires running `ollama serve` + `ollama pull qwen3:14b` on PC
+
+### What's next
+- Part 2: AI Agent service (orchestrator) + tools (`get_services`, `get_slots`, `create_appointment`) + intent detection
+- Part 3: Frontend (toggle AI lead/human lead, approve UI for bookings, real-time "AI typing" indicator)
+
 ## What's next (Phase 2.5 / 3)
 
 - Connect v0.3.1: webhook queue in Connect repo

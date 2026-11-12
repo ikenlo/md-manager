@@ -9,7 +9,8 @@ bcrypt==4.3.0
 slowapi==0.1.9
 python-dotenv==1.1.0
 apscheduler==3.11.0
+# HTTP-клієнт для Ollama (і TestClient у тестах)
+httpx==0.28.1
 # dev
 pytest==8.3.5
-httpx==0.28.1
 ruff==0.11.8
