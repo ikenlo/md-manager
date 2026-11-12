@@ -47,6 +47,9 @@ class Dialogue(IdMixin, TimestampMixin, SoftDeleteMixin, Base):
     tags: Mapped[list["DialogTag"]] = relationship(
         back_populates="dialogue", cascade="all, delete-orphan", passive_deletes=True
     )
+    ai_suggestions: Mapped[list["AISuggestion"]] = relationship(  # noqa: F821
+        back_populates="dialogue", cascade="all, delete-orphan", passive_deletes=True
+    )
 
 
 class Message(IdMixin, CreatedMixin, Base):

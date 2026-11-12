@@ -1,4 +1,5 @@
 from app.models.agent import Agent
+from app.models.ai_suggestion import AISuggestion
 from app.models.channel import Channel
 from app.models.crm_client import ClientLink, CrmClient
 from app.models.dialogue import DialogTag, Dialogue, Message
@@ -9,6 +10,7 @@ from app.models.setting import Setting
 from app.models.user import User
 
 __all__ = [
+    "AISuggestion",
     "Agent",
     "Channel",
     "ClientLink",

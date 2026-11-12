@@ -87,6 +87,23 @@
 - Part 2: AI Agent service (orchestrator) + tools (`get_services`, `get_slots`, `create_appointment`) + intent detection
 - Part 3: Frontend (toggle AI lead/human lead, approve UI for bookings, real-time "AI typing" indicator)
 
+## Phase 3 Part 2 (IN PROGRESS — AI agent + human-in-the-loop)
+
+### Tools and agent
+- `services/tools/`: `get_services`, `get_slots` (mock data) and `create_appointment` + registry `execute_tool`.
+- `services/ai_agent.py`: tool-calling loop (max 3 iterations), intent detection
+  (booking / question / escalate / unknown), `build_messages_from_dialogue`.
+- Write-tools (`create_appointment`) are NOT executed by the agent: args are validated and the model gets
+  `{"pending_approval": true}`; the booking is executed only after admin approval. LLM errors → `escalate`.
+- Prompt: two-step approval — the model never tells the client "ви записані" before the admin approves.
+
+### DB: ai_suggestions
+- Table for pending AI suggestions awaiting admin approval.
+- Fields: content (proposed text), proposed_booking (booking to execute on approve), intent, status
+  (pending / approved / rejected / expired), resolved_at, resolved_by_user_id, message_id (client message).
+- Cascade: deleting dialogue removes its suggestions.
+- Migration 0003.
+
 ## What's next (Phase 2.5 / 3)
 
 - Connect v0.3.1: webhook queue in Connect repo
