@@ -1,7 +1,7 @@
 /**
  * Знімки екрана Phase 3 для документації → MDsManager/docs/screenshots/phase3-*.png
  *
- *   npm run capture:phase3        (лише ці тести; у `npm run test:e2e` вони пропускаються)
+ *   npm run capture        (лише ці тести; у `npm run test:e2e` вони пропускаються)
  *
  * Дані — з e2e/backend.py (чиста БД, mock Ollama). Тести йдуть по черзі й спираються на стан
  * попередніх (пропозиції, створені раніше), тому serial.

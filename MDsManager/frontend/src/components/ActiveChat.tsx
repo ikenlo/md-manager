@@ -27,8 +27,7 @@ import { STATUS_LABEL, useInboxStore } from '../store/inbox';
 import type { Attachment, Dialogue, Message, MessageStatus } from '../types';
 import { AISuggestionPanel } from './AISuggestionPanel';
 import ChannelIcon, { channelLabel } from './ChannelIcon';
-import { CHANNEL_RING } from './ChatList';
-import { Avatar, Badge, Button, Chip, Divider, Input, Skeleton, cn, toast } from './ui';
+import { Avatar, Badge, Button, Chip, Divider, EmptyState, IconButton, Input, Skeleton, cn, toast } from './ui';
 
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -91,13 +90,13 @@ function Attachments({ items, outbound }: { items: Attachment[]; outbound: boole
             target="_blank"
             rel="noreferrer"
             className={cn(
-              'flex max-w-xs items-center gap-2 rounded-md px-3 py-2 text-xs',
-              outbound ? 'bg-white/10 text-brand-ink' : 'bg-surface-2 text-ink',
+              'flex max-w-xs items-center gap-2 rounded-sm px-3 py-2 text-xs',
+              outbound ? 'bg-white/10 text-white' : 'bg-surface-2 text-ink',
             )}
           >
             <FileText size={16} className="shrink-0" aria-hidden="true" />
             <span className="min-w-0 truncate font-semibold">{a.name}</span>
-            <span className={cn('shrink-0', outbound ? 'text-brand-ink/70' : 'text-ink-3')}>{formatSize(a.size)}</span>
+            <span className={cn('shrink-0', outbound ? 'text-white/70' : 'text-ink-3')}>{formatSize(a.size)}</span>
           </a>
         ),
       )}
@@ -109,7 +108,7 @@ function Bubble({ m, clientName }: { m: Message; clientName: string }) {
   if (m.sender_type === 'system') {
     return (
       <div className="flex justify-center">
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-gold-tint px-4 py-1 text-xs font-semibold text-gold">
+        <span className="inline-flex items-center gap-1.5 rounded-pill border border-gold/30 bg-gold-tint px-3.5 py-1 text-xs font-bold text-gold">
           <Sparkles size={12} aria-hidden="true" />
           {m.content}
         </span>
@@ -125,16 +124,16 @@ function Bubble({ m, clientName }: { m: Message; clientName: string }) {
       <div className={cn('flex max-w-[82%] flex-col sm:max-w-[68%]', inbound ? 'items-start' : 'items-end')}>
         <div
           className={cn(
-            'rounded-2xl px-4 py-2.5 text-sm leading-relaxed [overflow-wrap:anywhere]',
+            'rounded-[14px] px-3.5 py-2.5 text-sm leading-relaxed [overflow-wrap:anywhere]',
             inbound
-              ? 'rounded-bl-none border border-line bg-surface text-ink shadow-sm'
-              : 'rounded-br-none bg-brand text-brand-ink shadow-sm',
+              ? 'rounded-bl-[4px] border border-line bg-surface text-ink shadow-sm'
+              : 'rounded-br-[4px] bg-gradient-to-b from-brand-2 to-brand text-white shadow-sm',
           )}
         >
           {m.content && <p className="whitespace-pre-wrap">{m.content}</p>}
           {m.attachments?.length ? <Attachments items={m.attachments} outbound={!inbound} /> : null}
         </div>
-        <div className="mt-1 flex items-center gap-1 text-2xs text-ink-3">
+        <div className="mt-1 flex items-center gap-1 px-1 text-2xs text-ink-3">
           {!inbound && (
             <>
               {human ? <Hand size={11} aria-hidden="true" /> : <Bot size={11} aria-hidden="true" />}
@@ -181,7 +180,7 @@ function AIModeToggle({
   className?: string;
 }) {
   return (
-    <div role="radiogroup" aria-label="Режим AI" className={cn('inline-flex rounded-md bg-surface-3 p-0.5', className)}>
+    <div role="radiogroup" aria-label="Режим AI" className={cn('inline-flex rounded-md bg-surface-3 p-[3px]', className)}>
       {AI_MODES.map((m) => {
         const { label, title, Icon } = MODE_META[m];
         const on = m === mode;
@@ -194,9 +193,11 @@ function AIModeToggle({
             title={title}
             onClick={() => onChange(m)}
             className={cn(
-              'inline-flex h-7 items-center gap-1 whitespace-nowrap rounded-sm px-2 text-xs font-semibold transition duration-1',
+              'inline-flex min-h-7 items-center gap-1 whitespace-nowrap rounded-[7px] px-2.5 text-xs font-semibold transition duration-1',
               'focus-visible:outline-none focus-visible:shadow-ring',
-              on ? 'bg-brand text-brand-ink shadow-sm' : 'text-ink-2 hover:bg-line/50',
+              on
+                ? 'bg-surface text-ink shadow-[0_1px_2px_rgba(20,30,25,.1),0_0_0_1px_rgb(var(--line))]'
+                : 'text-ink-2 hover:text-ink',
             )}
           >
             <Icon size={12} aria-hidden="true" />
@@ -256,11 +257,11 @@ export default function ActiveChat({ className }: { className?: string }) {
 
   if (!d) {
     return (
-      <main className={cn('flex min-w-0 flex-1 flex-col items-center justify-center gap-3 bg-bg text-sm text-ink-3', className)}>
-        <span className="grid h-[52px] w-[52px] place-items-center rounded-full bg-surface ring-1 ring-inset ring-line">
-          <MessageCircle size={24} strokeWidth={1.6} aria-hidden="true" />
-        </span>
-        Оберіть діалог зліва
+      <main className={cn('flex min-w-0 flex-1 flex-col items-center justify-center bg-bg', className)}>
+        <EmptyState icon={<MessageCircle size={24} strokeWidth={1.6} aria-hidden="true" />}>
+          <b className="block text-[15px] text-ink">Оберіть діалог</b>
+          <span className="mt-1 block">Повідомлення з Instagram, Facebook і Telegram — в одному місці.</span>
+        </EmptyState>
       </main>
     );
   }
@@ -302,29 +303,27 @@ export default function ActiveChat({ className }: { className?: string }) {
 
   return (
     <main className={cn('flex min-h-0 min-w-0 flex-1 flex-col bg-bg', className)} aria-label={`Чат: ${d.client.name}`}>
-      <header className="flex h-20 shrink-0 items-center gap-3 border-b border-line bg-surface/80 px-3 backdrop-blur-md sm:px-6">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => selectDialogue(null)}
-          aria-label="Назад до списку"
-          className="-ml-1 px-2 text-brand-2 min-[900px]:hidden"
-        >
+      <header className="flex min-h-[68px] shrink-0 items-center gap-3 border-b border-line bg-surface px-3 py-2.5 pt-[calc(10px+env(safe-area-inset-top))] min-[900px]:pt-2.5 sm:px-6">
+        <IconButton onClick={() => selectDialogue(null)} aria-label="Назад до списку" className="-ml-1 text-ink min-[900px]:hidden">
           <ArrowLeft size={20} />
-        </Button>
-        <Avatar
-          name={d.client.name}
-          size="lg"
-          className={cn('rounded-full ring-2 ring-offset-2 ring-offset-surface', CHANNEL_RING[d.channel])}
-        />
+        </IconButton>
+        <span className="relative shrink-0">
+          <Avatar name={d.client.name} size="md" className="sm:h-[42px] sm:w-[42px]" />
+          <span
+            className="absolute -bottom-1 -right-1 grid h-[18px] w-[18px] place-items-center rounded-full bg-surface ring-2 ring-surface"
+            aria-hidden="true"
+          >
+            <ChannelIcon type={d.channel} size={12} />
+          </span>
+        </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h2 className="truncate font-serif text-xl font-bold leading-tight text-brand sm:text-2xl">{d.client.name}</h2>
-            <Chip variant={d.status} size="sm" dot className="hidden sm:inline-flex">
+            <h2 className="truncate text-base font-bold leading-tight text-ink sm:text-lg">{d.client.name}</h2>
+            <Chip variant={d.status} size="sm" className="hidden sm:inline-flex">
               {STATUS_LABEL[d.status]}
             </Chip>
           </div>
-          <div className="mt-0.5 flex min-w-0 items-center gap-3 text-xs text-ink-2">
+          <div className="mt-0.5 flex min-w-0 items-center gap-3 text-xs text-ink-3">
             <span className="flex shrink-0 items-center gap-1">
               <Phone size={12} className="text-ink-3" aria-hidden="true" />
               {d.client.phone ?? <span className="text-ink-3">без номера</span>}
@@ -337,30 +336,30 @@ export default function ActiveChat({ className }: { className?: string }) {
             </span>
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <div className="mr-1 hidden items-center gap-1.5 sm:flex">
+        <div className="flex shrink-0 items-center gap-0.5 text-ink-2">
+          <div className="mr-1.5 hidden items-center gap-1.5 sm:flex">
             <AIModeToggle mode={mode} onChange={changeMode} />
             <Badge count={hasPending ? 1 : 0} variant="danger" aria-label="Є пропозиція AI" title="Є пропозиція AI" />
           </div>
-          <Button variant="ghost" size="sm" aria-label="Записати" title="Записати" className="px-2" onClick={soon('Запис')}>
+          <IconButton aria-label="Записати" title="Записати" onClick={soon('Запис')}>
             <CalendarPlus size={18} />
-          </Button>
-          <Button variant="ghost" size="sm" aria-label="Картка клієнта" title="Картка клієнта" className="hidden px-2 sm:inline-flex" onClick={soon('Картка клієнта')}>
+          </IconButton>
+          <IconButton aria-label="Картка клієнта" title="Картка клієнта" className="hidden  sm:inline-flex" onClick={soon('Картка клієнта')}>
             <User size={18} />
-          </Button>
-          <Button variant="ghost" size="sm" aria-label="Позначити" title="Позначити" className="hidden px-2 sm:inline-flex" onClick={soon('Позначки')}>
+          </IconButton>
+          <IconButton aria-label="Позначити" title="Позначити" className="hidden  sm:inline-flex" onClick={soon('Позначки')}>
             <Flag size={18} />
-          </Button>
+          </IconButton>
         </div>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-5 sm:p-8" aria-live="polite">
+      <div className="scroll-thin min-h-0 flex-1 overflow-y-auto px-3 py-5 sm:px-8 sm:py-6" aria-live="polite">
         <div className="mx-auto flex max-w-3xl flex-col gap-4" aria-busy={loading || undefined}>
           {loading && (
             <>
-              <Skeleton variant="rect" height={44} width="55%" className="bg-surface-3" />
-              <Skeleton variant="rect" height={44} width="45%" className="self-end bg-surface-3" />
-              <Skeleton variant="rect" height={44} width="60%" className="bg-surface-3" />
+              <Skeleton variant="rect" height={44} width="55%" />
+              <Skeleton variant="rect" height={44} width="45%" className="self-end" />
+              <Skeleton variant="rect" height={44} width="60%" />
             </>
           )}
           {messages.map((m, i) => {
@@ -375,14 +374,14 @@ export default function ActiveChat({ className }: { className?: string }) {
           })}
           {responding && (
             <div role="status" aria-label="AI аналізує розмову" className="flex items-end justify-end gap-2">
-              <div className="rounded-2xl rounded-br-none bg-brand px-4 py-2.5 text-brand-ink shadow-sm">
+              <div className="rounded-[14px] rounded-br-[4px] bg-gradient-to-b from-brand-2 to-brand px-3.5 py-2.5 text-white shadow-sm">
                 <div className="flex items-center gap-1.5">
                   <span className="text-sm">AI аналізує</span>
                   <span className="flex gap-1" aria-hidden="true">
                     {[0, 150, 300].map((delay) => (
                       <span
                         key={delay}
-                        className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand-ink/60 motion-reduce:animate-none"
+                        className="h-1.5 w-1.5 animate-bounce rounded-full bg-white/60 motion-reduce:animate-none"
                         style={{ animationDelay: `${delay}ms` }}
                       />
                     ))}
@@ -401,20 +400,20 @@ export default function ActiveChat({ className }: { className?: string }) {
       {(expired || windowClosed) && (
         <div className="shrink-0 space-y-px">
           {expired && (
-            <div role="alert" className="flex items-center gap-2 bg-danger px-4 py-2.5 text-sm font-semibold text-white sm:px-6">
+            <div role="alert" className="flex items-center gap-2 border-t border-danger/25 bg-danger-bg px-4 py-2.5 text-sm font-semibold text-danger sm:px-6">
               <WifiOff size={16} className="shrink-0" aria-hidden="true" />
               <span className="min-w-0 flex-1">{channelLabel(d.channel)}-токен прострочений. Повідомлення не доходять.</span>
               <button
                 type="button"
                 onClick={soon('Перепідключення каналу')}
-                className="shrink-0 rounded-sm px-2 py-1 underline decoration-white/50 underline-offset-2 hover:bg-white/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+                className="shrink-0 rounded-sm px-2 py-1 font-bold underline decoration-danger/40 underline-offset-2 hover:bg-danger/10 focus-visible:outline-none focus-visible:shadow-ring"
               >
                 Перепідключити
               </button>
             </div>
           )}
           {windowClosed && (
-            <div role="status" className="flex items-center gap-2 bg-warn-bg px-4 py-2.5 text-sm font-semibold text-warn sm:px-6">
+            <div role="status" className="flex items-center gap-2 border-t border-warn/25 bg-warn-bg px-4 py-2.5 text-sm font-semibold text-warn sm:px-6">
               <AlertTriangle size={16} className="shrink-0" aria-hidden="true" />
               Вікно 24 год минуло. Відповідь може не дійти.
             </div>
@@ -423,7 +422,7 @@ export default function ActiveChat({ className }: { className?: string }) {
       )}
 
       {pending && (
-        <div className="max-h-[55vh] shrink-0 overflow-y-auto border-t border-line bg-bg px-3 py-3 sm:px-5">
+        <div className="scroll-thin max-h-[55vh] shrink-0 overflow-y-auto border-t border-line bg-bg px-3 py-3 sm:px-6">
           <AISuggestionPanel
             suggestion={pending}
             isApproving={isApproving}
@@ -458,7 +457,7 @@ export default function ActiveChat({ className }: { className?: string }) {
               disabled={!canRunAI || source !== 'api'}
               title={source !== 'api' ? 'Потрібен запущений сервер' : 'AI підготує відповідь — клієнт її не отримає без вашого схвалення'}
               onClick={() => void useAIStore.getState().respond(d.uuid)}
-              className="-ml-2 text-brand-2"
+              className="-ml-2 text-gold"
             >
               Запустити AI
             </Button>
@@ -473,7 +472,6 @@ export default function ActiveChat({ className }: { className?: string }) {
             placeholder={mode === 'auto' ? 'Написати від імені салону (AI призупиниться)…' : 'Написати повідомлення…'}
             value={text}
             onChange={(e) => setText(e.target.value)}
-            inputClassName="border-transparent bg-surface-2 hover:border-transparent"
           />
           <Button type="submit" disabled={!text.trim()} loading={sending} iconLeft={<Send size={16} />} aria-label="Надіслати">
             <span className="hidden sm:inline">Надіслати</span>
@@ -481,7 +479,7 @@ export default function ActiveChat({ className }: { className?: string }) {
         </form>
         {/* поки є пропозиція AI — швидкі відповіді лише заважають */}
         {!hasPending && (
-          <div className="mt-2 flex gap-x-4 gap-y-1 overflow-x-auto whitespace-nowrap text-xs text-ink-3 sm:flex-wrap">
+          <div className="scroll-thin mt-2.5 flex gap-1.5 overflow-x-auto whitespace-nowrap pb-0.5 sm:flex-wrap">
             {QUICK_REPLIES.map((q) => (
               <button
                 key={q}
@@ -490,7 +488,7 @@ export default function ActiveChat({ className }: { className?: string }) {
                   setText(q);
                   inputRef.current?.focus();
                 }}
-                className="shrink-0 underline decoration-transparent underline-offset-4 transition hover:text-ink-2 hover:decoration-gold-soft focus-visible:outline-none focus-visible:decoration-gold"
+                className="inline-flex min-h-7 shrink-0 items-center rounded-pill border border-line bg-surface-2 px-2.5 text-xs font-semibold text-ink-2 transition duration-1 hover:border-line-strong hover:text-ink focus-visible:outline-none focus-visible:shadow-ring"
               >
                 {q}
               </button>

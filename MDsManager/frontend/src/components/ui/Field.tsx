@@ -41,7 +41,7 @@ export function Field({
   return (
     <div className={cn('flex min-w-0 flex-col gap-1.5', className)} {...rest}>
       {label && (
-        <label htmlFor={htmlFor} className="text-xs font-medium leading-tight text-ink-2">
+        <label htmlFor={htmlFor} className="text-xs font-medium leading-[1.3] tracking-[.01em] text-ink-2">
           {label}
           {required && (
             <span className="ml-0.5 text-danger" aria-hidden="true">

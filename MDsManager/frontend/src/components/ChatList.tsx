@@ -1,12 +1,11 @@
-import { Bot, LogOut, MessageCircle, Search } from 'lucide-react';
+import { Bot, MessageCircle, Search } from 'lucide-react';
 import { useMemo } from 'react';
 import { listTime } from '../lib/format';
-import { logout } from '../lib/session';
 import { useAIStore } from '../store/ai';
 import { STATUS_LABEL, useInboxStore, type InboxFilter } from '../store/inbox';
-import type { ChannelType, Dialogue } from '../types';
+import type { Dialogue } from '../types';
 import ChannelIcon, { channelLabel } from './ChannelIcon';
-import { Avatar, Badge, Button, Chip, Input, Skeleton, cn } from './ui';
+import { Avatar, Badge, Chip, EmptyState, Input, Skeleton, cn } from './ui';
 
 const FILTERS: Array<{ key: InboxFilter; label: string }> = [
   { key: 'all', label: 'Всі' },
@@ -15,13 +14,6 @@ const FILTERS: Array<{ key: InboxFilter; label: string }> = [
   { key: 'ordered', label: 'Записані' },
   { key: 'unread', label: 'Непрочитані' },
 ];
-
-/** Кольорова обводка аватара за каналом. */
-export const CHANNEL_RING: Record<ChannelType, string> = {
-  instagram: 'ring-[#c13584]',
-  facebook: 'ring-[#1877f2]',
-  telegram: 'ring-[#2aa3df]',
-};
 
 const matches = (d: Dialogue, f: InboxFilter) =>
   f === 'all' ? true : f === 'unread' ? d.unread_count > 0 : d.status === f;
@@ -61,82 +53,79 @@ export default function ChatList({ className }: { className?: string }) {
   return (
     <section
       aria-label="Діалоги"
-      className={cn('flex min-h-0 w-full flex-col border-r border-line bg-surface min-[900px]:w-[380px] min-[900px]:shrink-0', className)}
+      className={cn(
+        'flex min-h-0 w-full flex-col bg-surface min-[900px]:w-[380px] min-[900px]:shrink-0 min-[900px]:border-r min-[900px]:border-line',
+        className,
+      )}
     >
-      <header className="px-4 pb-3 pt-5 sm:px-5">
-        <div className="flex items-center gap-2.5">
-          {/* На телефоні бокової панелі немає — лого і вихід тут */}
-          <div
-            aria-hidden="true"
-            className="grid h-8 w-8 shrink-0 place-items-center rounded-sm bg-gradient-to-br from-[#d8b46a] to-[#a9823b] text-[10px] font-bold tracking-tight text-[#1a1408] min-[900px]:hidden"
-          >
-            M&amp;D
-          </div>
-          <h1 className="font-serif text-2xl font-bold leading-none text-brand">Діалоги</h1>
+      <header className="px-4 pb-3 pt-3.5 min-[900px]:px-5 min-[900px]:pt-[22px]">
+        {/* ≤900px заголовок — у верхній смузі (MobileBar), як у Connect */}
+        <div className="mb-3.5 hidden items-center gap-2.5 min-[900px]:flex">
+          <h1 className="text-2xl font-bold leading-tight tracking-[-0.01em] text-ink">Діалоги</h1>
           {unreadTotal > 0 && (
             <Badge count={unreadTotal} aria-label={`${unreadTotal} непрочитаних повідомлень`} title="Непрочитані" />
           )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={logout}
-            aria-label="Вийти"
-            title="Вийти"
-            className="ml-auto px-2 text-ink-3 min-[900px]:hidden"
-          >
-            <LogOut size={16} />
-          </Button>
         </div>
 
         <Input
-          className="mt-4"
           type="search"
           aria-label="Пошук клієнта"
-          placeholder="Пошук клієнта..."
+          placeholder="Пошук: ім'я, @instagram, телефон"
           iconLeft={<Search size={16} />}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          inputClassName="bg-surface-2 border-line"
         />
 
-        <div role="tablist" aria-label="Фільтр діалогів" className="mt-3 flex flex-wrap gap-1">
+        {/* Фільтри — «чіпи» Connect: горизонтальна прокрутка на телефоні */}
+        <div
+          role="tablist"
+          aria-label="Фільтр діалогів"
+          className="scroll-thin -mx-4 mt-3 flex gap-1.5 overflow-x-auto px-4 pb-0.5 min-[900px]:-mx-5 min-[900px]:px-5"
+        >
           {FILTERS.map(({ key, label }) => {
             const on = filter === key;
             return (
-              <Button
+              <button
                 key={key}
+                type="button"
                 role="tab"
                 aria-selected={on}
-                variant={on ? 'primary' : 'ghost'}
-                size="sm"
                 onClick={() => setFilter(key)}
-                className={cn('shrink-0 gap-1 rounded-pill', on ? 'text-white shadow-none' : 'text-ink-2')}
+                className={cn(
+                  'inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-pill border px-3 text-[13px] font-semibold transition duration-1',
+                  'focus-visible:outline-none focus-visible:shadow-ring',
+                  on
+                    ? 'border-brand bg-brand text-white dark:border-gold dark:bg-gold dark:text-[#17120a]'
+                    : 'border-line-strong bg-surface text-ink-2 hover:bg-surface-2',
+                )}
               >
                 {label}
-                <span className={cn('tabular-nums', on ? 'text-gold-soft' : 'text-ink-3')}>{counts[key]}</span>
-              </Button>
+                <span className={cn('tabular-nums text-xs', on ? 'opacity-75' : 'text-ink-3')}>{counts[key]}</span>
+              </button>
             );
           })}
         </div>
       </header>
 
-      <ul className="min-h-0 flex-1 overflow-y-auto border-t border-line" aria-label="Список діалогів">
+      <ul
+        className="min-h-0 flex-1 overflow-y-auto border-t border-line max-[900px]:pb-[calc(96px+env(safe-area-inset-bottom))]"
+        aria-label="Список діалогів"
+      >
         {isLoading && dialogues.length === 0 ? (
-          [0, 1, 2].map((i) => (
-            <li key={i} className="flex gap-3 border-b border-line px-4 py-3" aria-hidden="true">
-              <Skeleton variant="circle" width={40} className="bg-surface-3" />
+          [0, 1, 2, 3].map((i) => (
+            <li key={i} className="flex gap-3 border-b border-line px-4 py-3.5" aria-hidden="true">
+              <Skeleton variant="circle" width={40} />
               <div className="flex flex-1 flex-col gap-2 pt-1">
-                <Skeleton width="50%" className="bg-surface-3" />
-                <Skeleton width="80%" height={12} className="bg-surface-3" />
+                <Skeleton width="50%" />
+                <Skeleton width="80%" height={12} />
               </div>
             </li>
           ))
         ) : visible.length === 0 ? (
-          <li className="flex flex-col items-center gap-3 px-6 py-14 text-center text-sm text-ink-3">
-            <span className="grid h-[52px] w-[52px] place-items-center rounded-full bg-surface-2 ring-1 ring-inset ring-line">
-              <MessageCircle size={24} strokeWidth={1.6} aria-hidden="true" />
-            </span>
-            {loadError ?? (dialogues.length ? 'Немає діалогів за цим фільтром' : 'Немає діалогів')}
+          <li>
+            <EmptyState icon={<MessageCircle size={24} strokeWidth={1.6} aria-hidden="true" />}>
+              {loadError ?? (dialogues.length ? 'Немає діалогів за цим фільтром' : 'Поки немає діалогів')}
+            </EmptyState>
           </li>
         ) : (
           visible.map((d) => {
@@ -148,54 +137,58 @@ export default function ChatList({ className }: { className?: string }) {
                   onClick={() => selectDialogue(d.uuid)}
                   aria-current={on ? 'true' : undefined}
                   className={cn(
-                    'flex w-full gap-3 border-l-4 py-3 pl-3 pr-4 text-left transition-colors duration-1 sm:pl-4',
+                    'relative flex w-full gap-3 px-4 py-3 text-left transition-colors duration-1 min-[900px]:px-5',
                     'focus-visible:bg-surface-2 focus-visible:outline-none',
-                    on ? 'border-gold bg-brand/5' : 'border-transparent hover:bg-surface-2',
+                    on
+                      ? 'bg-gold-tint/60 shadow-[inset_3px_0_0_rgb(var(--gold))]'
+                      : 'hover:bg-surface-2',
                   )}
                 >
-                  <Avatar
-                    name={d.client.name}
-                    size="md"
-                    className={cn('mt-0.5 rounded-full ring-2 ring-offset-2 ring-offset-surface', CHANNEL_RING[d.channel])}
-                  />
+                  <span className="relative mt-0.5 shrink-0 self-start">
+                    <Avatar name={d.client.name} size="md" />
+                    <span
+                      className="absolute -bottom-1 -right-1.5 grid h-4 w-4 place-items-center rounded-full bg-surface ring-2 ring-surface"
+                      aria-hidden="true"
+                    >
+                      <ChannelIcon type={d.channel} size={10} />
+                    </span>
+                  </span>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
                       <span className={cn('truncate text-[15px] text-ink', d.unread_count ? 'font-bold' : 'font-semibold')}>
                         {d.client.name}
                       </span>
-                      <ChannelIcon type={d.channel} size={13} />
                       <span className="sr-only">{channelLabel(d.channel)}</span>
-                      <time dateTime={d.last_message_at} className="ml-auto shrink-0 text-xs text-ink-3">
+                      <time
+                        dateTime={d.last_message_at}
+                        className={cn('ml-auto shrink-0 text-xs tabular-nums', d.unread_count ? 'font-bold text-gold' : 'text-ink-3')}
+                      >
                         {listTime(d.last_message_at)}
                       </time>
                     </div>
-                    <p className={cn('mt-0.5 truncate text-sm', d.unread_count ? 'font-medium text-ink' : 'text-ink-2')}>
+                    <p className={cn('mt-0.5 truncate text-[13px]', d.unread_count ? 'font-semibold text-ink' : 'text-ink-2')}>
                       {d.preview}
                     </p>
                     <div className="mt-1.5 flex items-center gap-1.5">
-                      <Chip variant={d.status} size="sm" dot>
+                      <Chip variant={d.status} size="sm">
                         {STATUS_LABEL[d.status]}
                       </Chip>
                       {pendingAI[d.uuid] && (
                         <span
                           title="Є пропозиція AI — чекає схвалення"
                           aria-label="Є пропозиція AI"
-                          className="inline-flex items-center gap-1 rounded-md border border-gold-soft/50 bg-gold-tint px-1.5 py-0.5"
+                          className="inline-flex min-h-[22px] items-center gap-1 rounded-pill border border-gold/35 bg-gold-tint px-2"
                         >
                           <Bot size={12} className="text-gold" aria-hidden="true" />
-                          <span className="text-[10px] font-semibold leading-none text-gold">AI</span>
+                          <span className="text-[11px] font-bold leading-none text-gold">AI</span>
                         </span>
                       )}
                       {!d.ai_active && (
-                        <Chip variant="new" size="sm">
+                        <Chip variant="muted" size="sm">
                           Людина
                         </Chip>
                       )}
-                      <Badge
-                        count={d.unread_count}
-                        className="ml-auto"
-                        aria-label={`${d.unread_count} непрочитаних`}
-                      />
+                      <Badge count={d.unread_count} className="ml-auto" aria-label={`${d.unread_count} непрочитаних`} />
                     </div>
                   </div>
                 </button>

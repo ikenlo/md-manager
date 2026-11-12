@@ -13,7 +13,7 @@ export interface BadgeProps extends Omit<HTMLAttributes<HTMLSpanElement>, 'child
 }
 
 const VARIANTS: Record<BadgeVariant, string> = {
-  brand: 'bg-brand text-brand-ink',
+  brand: 'bg-brand text-white dark:bg-gold dark:text-[#17120a]',
   danger: 'bg-danger text-white',
 };
 

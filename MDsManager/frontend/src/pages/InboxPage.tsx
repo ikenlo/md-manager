@@ -2,7 +2,6 @@ import { WifiOff } from 'lucide-react';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import ActiveChat from '../components/ActiveChat';
 import ChatList from '../components/ChatList';
-import Sidebar from '../components/Sidebar';
 import { cn, toast } from '../components/ui';
 import { mockDialogues, mockMessages } from '../data/mock';
 import { connect, disconnect } from '../lib/ws';
@@ -68,10 +67,6 @@ export default function InboxPage() {
 
   return (
     <div className="flex h-full overflow-hidden">
-      {/* < 900px: бокова панель прихована, лого і вихід — у шапці списку */}
-      <div className="hidden min-[900px]:flex">
-        <Sidebar active="chats" />
-      </div>
       {/* < 900px: або список, або чат */}
       <ChatList className={cn(hasActive && 'hidden min-[900px]:flex')} />
       <ActiveChat className={cn(!hasActive && 'hidden min-[900px]:flex')} />
@@ -79,14 +74,14 @@ export default function InboxPage() {
       {offline && (
         <div
           role="status"
-          className="fixed left-1/2 top-3 z-50 flex -translate-x-1/2 items-center gap-2 rounded-pill bg-warn px-4 py-1.5 text-xs font-semibold text-white shadow-lg"
+          className="fixed left-1/2 top-3 z-50 flex -translate-x-1/2 items-center gap-2 rounded-pill border border-warn/30 bg-warn-bg px-4 py-1.5 text-xs font-bold text-warn shadow-lg"
         >
           <WifiOff size={14} aria-hidden="true" />
           Немає з'єднання з сервером — перепідключення…
         </div>
       )}
       {isMock && (
-        <div className="pointer-events-none fixed bottom-3 right-3 hidden rounded-full bg-gold-tint px-3 py-1 text-2xs font-semibold text-gold shadow min-[900px]:block">
+        <div className="pointer-events-none fixed bottom-3 right-3 hidden rounded-pill border border-gold/30 bg-gold-tint px-3 py-1 text-2xs font-bold text-gold shadow-sm min-[900px]:block">
           Демо-режим: сервер не запущено
         </div>
       )}
