@@ -9,21 +9,25 @@ import {
   FileText,
   Flag,
   Hand,
+  Loader2,
   MessageCircle,
   Phone,
   Send,
   Sparkles,
   User,
+  UserRound,
   WifiOff,
   X,
 } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { AI_MODES, getAIMode, setAIMode, type AIMode } from '../lib/ai_mode';
 import { dayLabel, msgTime } from '../lib/format';
+import { useAIStore } from '../store/ai';
 import { STATUS_LABEL, useInboxStore } from '../store/inbox';
 import type { Attachment, Dialogue, Message, MessageStatus } from '../types';
 import ChannelIcon, { channelLabel } from './ChannelIcon';
 import { CHANNEL_RING } from './ChatList';
-import { Avatar, Button, Chip, Divider, Input, Skeleton, cn, toast } from './ui';
+import { Avatar, Badge, Button, Chip, Divider, Input, Skeleton, cn, toast } from './ui';
 
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -160,11 +164,58 @@ function lastInboundAt(d: Dialogue, list: Message[]): string | null {
 
 const soon = (what: string) => () => toast.info(`${what} — буде у Фазі 2`);
 
+const MODE_META: Record<AIMode, { label: string; title: string; Icon: typeof Bot }> = {
+  auto: { label: 'AI авто', title: 'AI генерує пропозиції автоматично', Icon: Sparkles },
+  manual: { label: 'Вручну', title: 'AI запускається кнопкою', Icon: Bot },
+  human: { label: 'Людина', title: 'AI вимкнено для цього діалогу', Icon: UserRound },
+};
+
+function AIModeToggle({
+  mode,
+  onChange,
+  className,
+}: {
+  mode: AIMode;
+  onChange: (m: AIMode) => void;
+  className?: string;
+}) {
+  return (
+    <div role="radiogroup" aria-label="Режим AI" className={cn('inline-flex rounded-md bg-surface-3 p-0.5', className)}>
+      {AI_MODES.map((m) => {
+        const { label, title, Icon } = MODE_META[m];
+        const on = m === mode;
+        return (
+          <button
+            key={m}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            title={title}
+            onClick={() => onChange(m)}
+            className={cn(
+              'inline-flex h-7 items-center gap-1 whitespace-nowrap rounded-sm px-2 text-xs font-semibold transition duration-1',
+              'focus-visible:outline-none focus-visible:shadow-ring',
+              on ? 'bg-brand text-brand-ink shadow-sm' : 'text-ink-2 hover:bg-line/50',
+            )}
+          >
+            <Icon size={12} aria-hidden="true" />
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function ActiveChat({ className }: { className?: string }) {
   const activeUuid = useInboxStore((s) => s.activeDialogueUuid);
   const d = useInboxStore((s) => s.dialogues.find((x) => x.uuid === s.activeDialogueUuid));
   const list = useInboxStore((s) => (s.activeDialogueUuid ? s.messagesByDialogue[s.activeDialogueUuid] : undefined));
-  const { sendMessage, selectDialogue, toggleAi } = useInboxStore.getState();
+  const { sendMessage, selectDialogue } = useInboxStore.getState();
+  const source = useInboxStore((s) => s.source);
+  const pending = useAIStore((s) => (activeUuid ? s.pendingByDialogue[activeUuid] : undefined));
+  const responding = useAIStore((s) => (activeUuid ? Boolean(s.responding[activeUuid]) : false));
+  const [mode, setMode] = useState<AIMode>('manual');
   const messages = useMemo(() => list ?? [], [list]);
   const loading = list === undefined;
 
@@ -179,6 +230,19 @@ export default function ActiveChat({ className }: { className?: string }) {
 
   useEffect(() => setText(''), [activeUuid]);
 
+  // Режим AI — свій для кожного діалогу; без збереженого — з ai_active від сервера
+  useEffect(() => {
+    if (!activeUuid) return;
+    const fromServer = useInboxStore.getState().dialogues.find((x) => x.uuid === activeUuid)?.ai_active;
+    setMode(getAIMode(activeUuid, fromServer === false ? 'human' : 'manual'));
+  }, [activeUuid]);
+
+  // Пропозиція AI, що чекає рішення (демо-режим без сервера — пропускаємо)
+  useEffect(() => {
+    if (!activeUuid || source !== 'api') return;
+    void useAIStore.getState().fetchPending(activeUuid);
+  }, [activeUuid, source]);
+
   if (!d) {
     return (
       <main className={cn('flex min-w-0 flex-1 flex-col items-center justify-center gap-3 bg-bg text-sm text-ink-3', className)}>
@@ -189,6 +253,17 @@ export default function ActiveChat({ className }: { className?: string }) {
       </main>
     );
   }
+
+  const changeMode = (m: AIMode) => {
+    setMode(m);
+    setAIMode(d.uuid, m);
+    // список діалогів показує чип «Людина» за ai_active — тримаємо їх узгодженими
+    useInboxStore.setState((st) => ({
+      dialogues: st.dialogues.map((x) => (x.uuid === d.uuid ? { ...x, ai_active: m !== 'human' } : x)),
+    }));
+  };
+  const hasPending = Boolean(pending);
+  const canRunAI = mode !== 'human' && !hasPending && !responding;
 
   const inboundAt = lastInboundAt(d, messages);
   const windowClosed = inboundAt !== null && Date.now() - Date.parse(inboundAt) > WINDOW_MS;
@@ -247,17 +322,10 @@ export default function ActiveChat({ className }: { className?: string }) {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => toggleAi(d.uuid)}
-            aria-pressed={d.ai_active}
-            title={d.ai_active ? 'AI відповідає клієнту. Натисніть, щоб вести самому' : 'Веде людина. Натисніть, щоб передати AI'}
-            iconLeft={d.ai_active ? <Bot size={14} /> : <Hand size={14} />}
-            className={cn('mr-1', d.ai_active && 'border-gold-soft bg-gold-tint text-gold hover:bg-gold-tint')}
-          >
-            <span className="hidden lg:inline">{d.ai_active ? 'AI веде' : 'Веде людина'}</span>
-          </Button>
+          <div className="mr-1 hidden items-center gap-1.5 sm:flex">
+            <AIModeToggle mode={mode} onChange={changeMode} />
+            <Badge count={hasPending ? 1 : 0} variant="danger" aria-label="Є пропозиція AI" title="Є пропозиція AI" />
+          </div>
           <Button variant="ghost" size="sm" aria-label="Записати" title="Записати" className="px-2" onClick={soon('Запис')}>
             <CalendarPlus size={18} />
           </Button>
@@ -318,13 +386,41 @@ export default function ActiveChat({ className }: { className?: string }) {
       )}
 
       <footer className="shrink-0 border-t border-line bg-surface px-3 pb-[calc(12px+env(safe-area-inset-bottom))] pt-3 sm:p-5">
+        <div className="mb-2 flex min-h-8 flex-wrap items-center gap-2 text-xs text-ink-3">
+          {/* на телефоні в шапці немає місця — перемикач тут */}
+          <AIModeToggle mode={mode} onChange={changeMode} className="sm:hidden" />
+          {responding ? (
+            <span role="status" className="inline-flex items-center gap-1.5">
+              <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+              AI думає...
+            </span>
+          ) : hasPending ? (
+            <span className="inline-flex items-center gap-1.5 font-semibold text-gold">
+              <Sparkles size={14} aria-hidden="true" />
+              Пропозиція AI готова
+            </span>
+          ) : mode !== 'human' ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              iconLeft={<Sparkles size={14} />}
+              disabled={!canRunAI || source !== 'api'}
+              title={source !== 'api' ? 'Потрібен запущений сервер' : 'AI підготує відповідь — клієнт її не отримає без вашого схвалення'}
+              onClick={() => void useAIStore.getState().respond(d.uuid)}
+              className="-ml-2 text-brand-2"
+            >
+              Запустити AI
+            </Button>
+          ) : null}
+        </div>
         <form onSubmit={submit} className="flex items-start gap-2">
           <Input
             ref={inputRef}
             className="flex-1"
             aria-label="Повідомлення"
             autoComplete="off"
-            placeholder={d.ai_active ? 'Написати від імені салону (AI призупиниться)…' : 'Написати повідомлення…'}
+            placeholder={mode === 'auto' ? 'Написати від імені салону (AI призупиниться)…' : 'Написати повідомлення…'}
             value={text}
             onChange={(e) => setText(e.target.value)}
             inputClassName="border-transparent bg-surface-2 hover:border-transparent"
