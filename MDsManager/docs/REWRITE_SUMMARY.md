@@ -34,14 +34,40 @@
 - All 38 backend tests pass (`python -m pytest -q`), `ruff check` чистий.
 - Frontend: `npm run build` і `npm run typecheck` без помилок.
 
-## What's next (Phase 2)
+## Phase 2 (COMPLETE)
+
+- **Real outbound worker (30s, retry, backoff)** — `outbound_queue` → `MetaAdapter` (поки `MockMetaAdapter`)
+  → статус повідомлення `queued → sent | failed`; повтори через 60 с × спробу, максимум 5; APScheduler у lifespan.
+- **DB schema 0002** — Meta-ідентифікатори клієнтів і каналів, `unread_count`, `last_inbound_at/last_outbound_at`,
+  статуси й напрям повідомлень, вкладення (JSON), таблиці `outbound_queue` і `media_assets`.
+  Міграції SQLite безпечні для даних: FK вимикаються на час міграції, після — `foreign_key_check`.
+- **WebSocket real-time updates** — `WS /api/ws?token=…`, менеджер з'єднань, сервер шле ping і закриває сокет,
+  коли сесія завершилась (1008).
+- **All 3 events: new_message, message_status, dialogue_updated** — шина подій (`app/services/events.py`) → усі вкладки.
+- **Test endpoints for simulation** — `/api/_test/simulate_inbound`, `simulate_attachment`, `trigger_outbound_failure`
+  (лише `MOCK_META=true` і не production) + `GET /api/media/{uuid}`.
+- **Frontend live updates (badges, statuses, new dialogues)** — інбокс читає реальні діалоги з API,
+  надсилає через `POST`, оновлюється через WebSocket; перепідключення з паузою 1–30 с і дозавантаженням
+  пропущеного; банер «Немає з'єднання»; тост про нове повідомлення й про невдалу відправку.
+  Dev-панель (лише `npm run dev`) для симуляції.
+- Тести: бекенд 71 (WS, черга, тестові ендпоінти, міграції туди й назад); наскрізний сценарій на двох вкладках
+  (24 перевірки, Playwright) — нове вхідне, статуси, вкладення, збій, обрив сервера, F5, вихід.
+
+### Обмеження після Phase 2
+
+- «Прочитано» — лише локально у вкладці: після F5 лічильник непрочитаних повертається (mark_read — Фаза 3).
+- Перемикач «AI веде / Веде людина» не зберігається на сервері.
+- Mock-дані (`src/data/mock.ts`) лишились тільки для демо-входу без бекенда (dev).
+- Вкладення роздаються за UUID без Bearer (`<img>` не вміє заголовки) — як посилання CDN Meta.
+
+## What's next (Phase 2.5 / 3)
 
 - Connect v0.3.1: webhook queue in Connect repo
 - Sync job: Manager pulls webhooks from Connect
-- Real Meta API integration (адаптера Meta в бекенді Manager ще немає — його треба створити)
-- WebSocket real connection (`src/lib/ws.ts` already stubbed; стор уже має `appendIncomingMessage`,
-  `upsertDialogue`, `setMessageStatus`)
-- Реальна відправка: статус `queued` → `sent/delivered/read/failed` від черги вихідних
+- Phase 2.5: реальний `MetaAdapter` (Graph API) замість `MockMetaAdapter` — інтерфейс і фабрика вже є
+  (`app/services/adapters/`), вмикається `MOCK_META=false`; вхідні вебхуки Meta → ті самі події `new_message`
+- Статуси `delivered/read` від Meta (зараз воркер доводить лише до `sent`/`failed`)
+- Phase 3: mark_read і typing через WebSocket, AI Sales Agent
 
 > Нагадування з канону Connect (`docs/CANON.md`, D-5): Manager читає Connect лише через `/api/ext/v1`,
 > записів у Connect немає. Черга вебхуків у Connect має це враховувати.
@@ -65,7 +91,7 @@ Production: `npm run build && npm run preview` для локальної пер�
 
 ## Known limitations (to fix in Phase 2)
 
-- Demo data loads in production (until real data from API).
+- ~~Demo data loads in production~~ — з Phase 2 інбокс читає реальні дані з API.
 - Buttons «Записати», «Картка клієнта», «Позначити», «Перепідключити» show a «Фаза 2» toast.
 - Green squares in attachments (test 1×1 px image).
 - Таблиця на телефоні гортається вбік — перетворення на картки (як у Connect, ≤ 640 px) ще не зроблено.

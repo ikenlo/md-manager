@@ -47,6 +47,10 @@ def dialogue_out(d: Dialogue, last: Message | None) -> DialogueOut:
         ),
         tags=[t.tag_name for t in d.tags],
         last_message=message_out(last) if last else None,
+        unread_count=d.unread_count,
+        last_inbound_at=d.last_inbound_at,
+        webhook_status=ch.webhook_status,
+        ai_active=d.assigned_agent_id is not None,
     )
 
 

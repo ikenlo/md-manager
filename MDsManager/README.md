@@ -78,12 +78,33 @@ data/                                   # SQLite (mds.db)
 | POST | `/api/auth/refresh` | новий токен на 7 днів → `{token, expires_at}`; старий одразу недійсний, протухлий → 401 |
 | POST | `/api/auth/logout` | завершити сесію |
 | GET | `/api/dialogues` | фільтри: `status`, `channel`, `tag`, `q`, `limit`, `offset` |
-| GET | `/api/dialogues/{uuid}/messages` | `limit`, `before_id` |
-| POST | `/api/dialogues/{uuid}/messages` | `{content}` — відповідь адміністратора (`sender_type=human`) |
+| GET | `/api/dialogues/{uuid}/messages` | `limit`, `before_id`; кожне повідомлення має `direction`, `status`, `attachments` |
+| POST | `/api/dialogues/{uuid}/messages` | `{text}` (стара назва `content` теж працює) → `201`, повідомлення `queued` у черзі вихідних; порожній текст → `400` |
+| GET | `/api/media/{uuid}` | файл вкладення (без Bearer — для `<img>`; доступ за неперебірним UUID) |
+| WS | `/api/ws?token=<token>` | події в реальному часі: `new_message`, `message_status`, `dialogue_updated`; поганий токен → закриття `1008` |
 | POST | `/api/settings` | `{key, value, is_secret}` — значення шифрується Fernet |
 | GET | `/api/settings` | список; секрети повертаються як `null` |
 
 Авторизація: `Authorization: Bearer <token>`.
+
+**Черга вихідних.** Воркер перевіряє `outbound_queue` кожні `OUTBOUND_INTERVAL_SECONDS` (типово 30 с) і відправляє
+через Meta-адаптер (поки `MOCK_META=true` — імітація). Невдача → повтор через 60 с × номер спроби,
+після `MAX_OUTBOUND_RETRIES` (5) — `failed`. `OUTBOUND_WORKER_ENABLED=false` вимикає воркер (тести).
+Один процес uvicorn (без `--workers`): черга, WebSocket і ліміт входу тримають стан у пам'яті.
+
+**WebSocket** `/api/ws?token=…`: сервер кожні 30 с шле `{"type":"ping"}` і перевіряє, чи сесія ще чинна;
+клієнт може слати `{"type":"ping"}` → `{"type":"pong"}`. Фронтенд перепідключається сам (1, 2, 4 … 30 с).
+
+### Тестові ендпоінти (DEV only, MOCK_META=true required)
+
+Підключаються лише при `MOCK_META=true` і `APP_ENV=development`; потрібен Bearer. У `npm run dev` є dev-панель
+(кнопка з колбою внизу праворуч в інбоксі).
+
+| Метод | Шлях | Що робить |
+|---|---|---|
+| POST | `/api/_test/simulate_inbound` | `{client_name, username, text, channel}` → новий клієнт + діалог + вхідне; події `new_message`, `dialogue_updated` |
+| POST | `/api/_test/simulate_attachment` | `{dialogue_uuid}` → фото 1×1 до останнього вхідного (файл у `MEDIA_DIR`) |
+| POST | `/api/_test/trigger_outbound_failure` | `{dialogue_uuid, text}` → вихідне з префіксом `__FAIL__`, mock його «не відправить» → повтори → `failed` |
 Зміна пароля (завершує всі сесії користувача): `python -m app.set_password admin@mds.local`. Токен — `secrets.token_urlsafe(48)`, у БД лише SHA-256,
 TTL 7 днів. Паролі — bcrypt. Усі часи в БД — UTC (naive datetime на вході → помилка).
 

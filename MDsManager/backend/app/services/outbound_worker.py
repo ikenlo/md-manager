@@ -26,7 +26,6 @@ from app.services.events import MESSAGE_STATUS, EventBus, events
 log = logging.getLogger("mds.outbound")
 
 BATCH_SIZE = 20
-BACKOFF_STEP = timedelta(seconds=60)
 ALREADY_SENT = ("sent", "delivered", "read")
 NO_RECIPIENT = "no recipient id"
 
@@ -157,7 +156,8 @@ class OutboundWorker:
                     event = ("failed", None)
                     stats["failed"] += 1
                 else:
-                    item.next_retry_at = now + BACKOFF_STEP * item.attempts
+                    step = timedelta(seconds=get_settings().outbound_retry_base_seconds)
+                    item.next_retry_at = now + step * item.attempts
                     event = None
                 stats["errors"].append({"queue_id": qid, "error": type(error).__name__})
             msg_uuid, d_uuid = msg.uuid, d.uuid

@@ -23,7 +23,7 @@ import { STATUS_LABEL, useInboxStore } from '../store/inbox';
 import type { Attachment, Dialogue, Message, MessageStatus } from '../types';
 import ChannelIcon, { channelLabel } from './ChannelIcon';
 import { CHANNEL_RING } from './ChatList';
-import { Avatar, Button, Chip, Divider, Input, cn, toast } from './ui';
+import { Avatar, Button, Chip, Divider, Input, Skeleton, cn, toast } from './ui';
 
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -166,8 +166,10 @@ export default function ActiveChat({ className }: { className?: string }) {
   const list = useInboxStore((s) => (s.activeDialogueUuid ? s.messagesByDialogue[s.activeDialogueUuid] : undefined));
   const { sendMessage, selectDialogue, toggleAi } = useInboxStore.getState();
   const messages = useMemo(() => list ?? [], [list]);
+  const loading = list === undefined;
 
   const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -192,11 +194,18 @@ export default function ActiveChat({ className }: { className?: string }) {
   const windowClosed = inboundAt !== null && Date.now() - Date.parse(inboundAt) > WINDOW_MS;
   const expired = d.webhook_status === 'expired';
 
-  const submit = (e: FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
-    if (!text.trim()) return;
-    sendMessage(d.uuid, text);
+    const value = text;
+    if (!value.trim() || sending) return;
     setText('');
+    setSending(true);
+    const ok = await sendMessage(d.uuid, value);
+    setSending(false);
+    if (!ok) {
+      setText(value); // повертаємо текст, щоб не загубився
+      toast.error('Не вдалося надіслати. Спробуйте ще раз');
+    }
     inputRef.current?.focus();
   };
 
@@ -262,7 +271,14 @@ export default function ActiveChat({ className }: { className?: string }) {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-5 sm:p-8" aria-live="polite">
-        <div className="mx-auto flex max-w-3xl flex-col gap-4">
+        <div className="mx-auto flex max-w-3xl flex-col gap-4" aria-busy={loading || undefined}>
+          {loading && (
+            <>
+              <Skeleton variant="rect" height={44} width="55%" className="bg-surface-3" />
+              <Skeleton variant="rect" height={44} width="45%" className="self-end bg-surface-3" />
+              <Skeleton variant="rect" height={44} width="60%" className="bg-surface-3" />
+            </>
+          )}
           {messages.map((m, i) => {
             const day = dayLabel(m.created_at);
             const showDay = i === 0 || dayLabel(messages[i - 1]!.created_at) !== day;
@@ -313,7 +329,7 @@ export default function ActiveChat({ className }: { className?: string }) {
             onChange={(e) => setText(e.target.value)}
             inputClassName="border-transparent bg-surface-2 hover:border-transparent"
           />
-          <Button type="submit" disabled={!text.trim()} iconLeft={<Send size={16} />} aria-label="Надіслати">
+          <Button type="submit" disabled={!text.trim()} loading={sending} iconLeft={<Send size={16} />} aria-label="Надіслати">
             <span className="hidden sm:inline">Надіслати</span>
           </Button>
         </form>

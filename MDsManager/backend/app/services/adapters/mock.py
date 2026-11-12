@@ -7,8 +7,11 @@ from uuid import uuid4
 
 from app.services.adapters.base import MetaAdapter, MetaChannel, SendResult, UserProfile
 
+# Повідомлення з таким початком «не доходять» — для перевірки повторів (/api/_test/…)
+FAIL_MARKER = "__FAIL__"
+
 # JPEG 1×1 px (колір фону інтерфейсу)
-_DUMMY_JPG = base64.b64decode(
+DUMMY_JPG = base64.b64decode(
     "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDABALDA4MChAODQ4SERATGCgaGBYWGDEjJR0oOjM9PDkzODdASFxOQERX"
     "RTc4UG1RV19iZ2hnPk1xeXBkeFxlZ2P/2wBDARESEhgVGC8aGi9jQjhCY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2Nj"
     "Y2NjY2NjY2NjY2NjY2NjY2NjY2NjY2NjY2P/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAA"
@@ -28,13 +31,15 @@ class MockMetaAdapter(MetaAdapter):
 
     async def send_message(self, recipient_id: str, text: str, channel: MetaChannel) -> SendResult:
         await asyncio.sleep(self.send_delay)
+        if text.startswith(FAIL_MARKER):
+            raise RuntimeError("mock failure")
         return {"external_id": f"mock_{uuid4().hex}", "status": "sent"}
 
     async def download_attachment(self, url: str, dest_path: str) -> bool:
         def write() -> None:
             path = Path(dest_path)
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_bytes(_DUMMY_JPG)
+            path.write_bytes(DUMMY_JPG)
 
         await asyncio.to_thread(write)
         return True

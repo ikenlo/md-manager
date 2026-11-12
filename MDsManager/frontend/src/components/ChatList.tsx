@@ -5,7 +5,7 @@ import { logout } from '../lib/session';
 import { STATUS_LABEL, useInboxStore, type InboxFilter } from '../store/inbox';
 import type { ChannelType, Dialogue } from '../types';
 import ChannelIcon, { channelLabel } from './ChannelIcon';
-import { Avatar, Badge, Button, Chip, Input, cn } from './ui';
+import { Avatar, Badge, Button, Chip, Input, Skeleton, cn } from './ui';
 
 const FILTERS: Array<{ key: InboxFilter; label: string }> = [
   { key: 'all', label: 'Всі' },
@@ -30,6 +30,8 @@ export default function ChatList({ className }: { className?: string }) {
   const activeUuid = useInboxStore((s) => s.activeDialogueUuid);
   const filter = useInboxStore((s) => s.filter);
   const search = useInboxStore((s) => s.search);
+  const isLoading = useInboxStore((s) => s.isLoading);
+  const loadError = useInboxStore((s) => s.loadError);
   const { selectDialogue, setFilter, setSearch } = useInboxStore.getState();
 
   const counts = useMemo(() => {
@@ -117,12 +119,22 @@ export default function ChatList({ className }: { className?: string }) {
       </header>
 
       <ul className="min-h-0 flex-1 overflow-y-auto border-t border-line" aria-label="Список діалогів">
-        {visible.length === 0 ? (
+        {isLoading && dialogues.length === 0 ? (
+          [0, 1, 2].map((i) => (
+            <li key={i} className="flex gap-3 border-b border-line px-4 py-3" aria-hidden="true">
+              <Skeleton variant="circle" width={40} className="bg-surface-3" />
+              <div className="flex flex-1 flex-col gap-2 pt-1">
+                <Skeleton width="50%" className="bg-surface-3" />
+                <Skeleton width="80%" height={12} className="bg-surface-3" />
+              </div>
+            </li>
+          ))
+        ) : visible.length === 0 ? (
           <li className="flex flex-col items-center gap-3 px-6 py-14 text-center text-sm text-ink-3">
             <span className="grid h-[52px] w-[52px] place-items-center rounded-full bg-surface-2 ring-1 ring-inset ring-line">
               <MessageCircle size={24} strokeWidth={1.6} aria-hidden="true" />
             </span>
-            {dialogues.length ? 'Немає діалогів за цим фільтром' : 'Немає діалогів'}
+            {loadError ?? (dialogues.length ? 'Немає діалогів за цим фільтром' : 'Немає діалогів')}
           </li>
         ) : (
           visible.map((d) => {

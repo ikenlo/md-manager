@@ -11,11 +11,13 @@ from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from app.api.routes import auth, dialogues, settings
+from app.api.routes import _test, auth, dialogues, media, settings, ws
 from app.config import FRONTEND_DIST, get_settings
 from app.security import HTTPSRedirectMiddleware
+from app.services.events import events
 from app.services.outbound_worker import OutboundWorker
 from app.services.rate_limit import limiter, rate_limit_handler
+from app.services.ws_manager import forward_to_ws
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("mds")
@@ -24,6 +26,8 @@ log = logging.getLogger("mds")
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     cfg = get_settings()
+    # події воркера й API → усі відкриті вкладки
+    unsubscribe = events.subscribe(forward_to_ws)
     scheduler: AsyncIOScheduler | None = None
     if cfg.outbound_worker_enabled:
         worker = OutboundWorker()
@@ -47,6 +51,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     try:
         yield
     finally:
+        unsubscribe()
         if scheduler is not None:
             scheduler.shutdown(wait=False)
 
@@ -82,6 +87,10 @@ def create_app() -> FastAPI:
     app.include_router(auth.router)
     app.include_router(dialogues.router)
     app.include_router(settings.router)
+    app.include_router(media.router)
+    app.include_router(ws.router)
+    if cfg.mock_meta and not cfg.is_production:
+        app.include_router(_test.router)
 
     @app.get("/api/health", tags=["system"])
     def health() -> dict[str, str]:

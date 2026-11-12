@@ -40,7 +40,12 @@ class DialogueOut(BaseModel):
     channel: ChannelOut
     tags: list[str]
     last_message: MessageOut | None
-    unread: int = 0
+    unread_count: int
+    last_inbound_at: datetime | None
+    # стан підключення каналу: active | error | expired | inactive
+    webhook_status: str
+    # діалог веде AI-агент (assigned_agent); перемикання — Фаза 3
+    ai_active: bool
 
 
 class DialogueList(BaseModel):
