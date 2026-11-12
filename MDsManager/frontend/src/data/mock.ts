@@ -1,6 +1,8 @@
 // Демо-дані для оболонки «Діалоги» (Фаза 1, до підключення реального API).
 // Час рахується відносно моменту завантаження, щоб список показував «сьогодні».
-// Вхідні: delivered (ще не прочитано) / read; вихідні: sent. Системні нотатки — без direction/status.
+// Вхідні: delivered (ще не прочитано) / read. Вихідні — різні статуси для демо іконок
+// (sent / delivered / read / failed; queued з'являється після «Надіслати»). Системні — без direction/status.
+// Марія — прострочений токен каналу; Ірина — останнє вхідне 25 год тому (банер 24-годинного вікна).
 import type { Dialogue, Message } from '../types';
 
 const ago = (minutes: number): string => new Date(Date.now() - minutes * 60_000).toISOString();
@@ -23,7 +25,7 @@ export const mockMessages: Record<string, Message[]> = {
       uuid: 'demo-msg-olena-2',
       sender_type: 'agent',
       direction: 'outbound',
-      status: 'sent',
+      status: 'read',
       content: 'Вітаю, Олено! Манікюр з покриттям — 650 грн, триває близько 1,5 год. На який день вам зручно?',
       created_at: ago(47),
     },
@@ -43,7 +45,7 @@ export const mockMessages: Record<string, Message[]> = {
       uuid: 'demo-msg-olena-4',
       sender_type: 'human',
       direction: 'outbound',
-      status: 'sent',
+      status: 'delivered',
       content: 'Так, звісно! Дизайн +50 грн за ніготь, майстер Ірина зробить 😊',
       created_at: ago(20),
     },
@@ -69,7 +71,7 @@ export const mockMessages: Record<string, Message[]> = {
       uuid: 'demo-msg-maria-2',
       sender_type: 'agent',
       direction: 'outbound',
-      status: 'sent',
+      status: 'failed',
       content: 'Вітаємо в M&D! Чим можемо допомогти?',
       created_at: ago(15),
     },
@@ -89,7 +91,7 @@ export const mockMessages: Record<string, Message[]> = {
       direction: 'inbound',
       status: 'read',
       content: 'Привіт! Є вільне віконце на стрижку завтра зранку?',
-      created_at: ago(190),
+      created_at: ago(25 * 60 + 12),
     },
     {
       uuid: 'demo-msg-iryna-2',
@@ -97,7 +99,7 @@ export const mockMessages: Record<string, Message[]> = {
       direction: 'outbound',
       status: 'sent',
       content: 'Вітаю, Ірино! Завтра є 10:00 та 11:30 у майстра Олександри. Записати вас?',
-      created_at: ago(188),
+      created_at: ago(25 * 60 + 10),
     },
     {
       uuid: 'demo-msg-iryna-3',
@@ -105,13 +107,13 @@ export const mockMessages: Record<string, Message[]> = {
       direction: 'inbound',
       status: 'read',
       content: 'Так, записуюсь на завтра о 10:00',
-      created_at: ago(180),
+      created_at: ago(25 * 60 + 2),
     },
     {
       uuid: 'demo-msg-iryna-4',
       sender_type: 'system',
       content: 'Створено запис: стрижка, завтра о 10:00',
-      created_at: ago(179),
+      created_at: ago(25 * 60 + 1),
     },
   ],
 };
@@ -143,6 +145,7 @@ export const mockDialogues: Dialogue[] = [
     preview: 'Доброго дня, скільки коштує педикюр?',
     unread_count: 1,
     ai_active: true,
+    webhook_status: 'expired', // демо банера «токен прострочений»
   },
   {
     uuid: IRYNA,

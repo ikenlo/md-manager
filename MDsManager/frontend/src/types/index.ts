@@ -45,6 +45,10 @@ export interface Dialogue {
   preview: string;
   unread_count: number;
   ai_active: boolean;
+  /** Стан підключення каналу (токен Meta тощо); `expired` → відповіді не доходять. */
+  webhook_status?: 'active' | 'expired';
+  /** Останнє вхідне від клієнта — для 24-годинного вікна Meta. Якщо нема — береться з повідомлень. */
+  last_inbound_at?: string;
 }
 
 export interface LoginResponse {

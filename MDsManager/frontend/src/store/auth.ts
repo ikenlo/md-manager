@@ -43,9 +43,6 @@ export const useAuthStore = create<AuthState>()(
   ),
 );
 
-/** @deprecated Use `useAuthStore`; kept so untouched pages (Inbox) keep compiling. */
-export const useAuth = useAuthStore;
-
 /** Parses the backend's ISO datetime; a value without a zone is treated as UTC. */
 export function parseExpiry(iso: string): number {
   const hasZone = /(Z|[+-]\d\d:?\d\d)$/.test(iso);
