@@ -1,88 +1,187 @@
-import { Loader2, Lock, Mail } from 'lucide-react';
-import { useState, type FormEvent } from 'react';
-import { Navigate, useNavigate } from 'react-router-dom';
-import { useAuth } from '../store/auth';
+import axios from 'axios';
+import { AlertCircle, ArrowRight, Lock, User } from 'lucide-react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { loginRequest } from '../api/client';
+import { Button, Input } from '../components/ui';
+import { parseExpiry, selectIsAuthenticated, useAuthStore } from '../store/auth';
+import type { User as AppUser } from '../types';
+
+const LAST_LOGIN_KEY = 'mds_last_login';
+const LOGIN_DOMAIN = '@mds.local';
+
+// Демо-вхід без бекенда — лише в `npm run dev`, у зібраній версії гілка вирізається
+const MOCK_USER: AppUser = { uuid: 'mock-admin', email: 'admin@mds.local', display_name: 'Директор', role: 'director' };
+
+/** «admin» → «admin@mds.local»; email лишається як є. */
+const toEmail = (identifier: string) => {
+  const v = identifier.trim().toLowerCase();
+  return v.includes('@') ? v : `${v}${LOGIN_DOMAIN}`;
+};
+
+const readLast = () => {
+  try {
+    return localStorage.getItem(LAST_LOGIN_KEY) ?? '';
+  } catch {
+    return '';
+  }
+};
+
+function minutesLabel(sec: number) {
+  const m = Math.floor(sec / 60);
+  const s = String(sec % 60).padStart(2, '0');
+  return `${m}:${s}`;
+}
 
 export default function LoginPage() {
-  const { token, login } = useAuth();
+  const authed = useAuthStore(selectIsAuthenticated);
+  const setAuth = useAuthStore((s) => s.setAuth);
   const navigate = useNavigate();
-  const [email, setEmail] = useState('admin@mds.local');
+  const from = (useLocation().state as { from?: string } | null)?.from;
+
+  const [identifier, setIdentifier] = useState(readLast);
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [lockedFor, setLockedFor] = useState(0); // секунд до зняття ліміту 429
+  const passRef = useRef<HTMLInputElement>(null);
+  const idRef = useRef<HTMLInputElement>(null);
 
-  if (token) return <Navigate to="/" replace />;
+  useEffect(() => {
+    (identifier ? passRef : idRef).current?.focus();
+    // лише при першому показі
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (lockedFor <= 0) return;
+    const t = setTimeout(() => setLockedFor((s) => s - 1), 1000);
+    return () => clearTimeout(t);
+  }, [lockedFor]);
+
+  if (authed) return <Navigate to={from && from !== '/login' ? from : '/'} replace />;
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
+    if (busy || lockedFor > 0) return;
+    if (!identifier.trim() || !password) {
+      setError('Введіть логін і пароль');
+      return;
+    }
     setError(null);
     setBusy(true);
+    const email = toEmail(identifier);
     try {
-      await login(email, password);
-      navigate('/', { replace: true });
+      const res = await loginRequest(email, password);
+      try {
+        localStorage.setItem(LAST_LOGIN_KEY, identifier.trim());
+      } catch {
+        /* ignore */
+      }
+      setAuth(res.token, res.user, parseExpiry(res.expires_at));
+      navigate(from && from !== '/login' ? from : '/', { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Не вдалося увійти');
+      const status = axios.isAxiosError(err) ? err.response?.status : undefined;
+      const offline = axios.isAxiosError(err) && (!err.response || err.response.status >= 500);
+      if (import.meta.env.DEV && offline && email === MOCK_USER.email && password === 'admin') {
+        setAuth('mock-token', MOCK_USER, Date.now() + 7 * 86_400_000, true);
+        navigate('/', { replace: true });
+        return;
+      }
+      if (status === 401) setError('Невірний логін або пароль');
+      else if (status === 429) {
+        const header = axios.isAxiosError(err) ? Number(err.response?.headers?.['retry-after']) : NaN;
+        setLockedFor(Number.isFinite(header) && header > 0 ? Math.ceil(header) : 15 * 60);
+        setError(null);
+      } else if (status === 422) setError('Перевірте формат логіна');
+      else if (offline) setError('Сервер недоступний. Спробуйте пізніше');
+      else setError('Не вдалося увійти');
+      setPassword('');
+      passRef.current?.focus();
     } finally {
       setBusy(false);
     }
   };
 
-  return (
-    <div className="flex min-h-full items-center justify-center bg-brand px-4 py-10">
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(180,138,62,.18),transparent_45%),radial-gradient(circle_at_85%_90%,rgba(29,77,59,.9),transparent_50%)]" />
-      <form onSubmit={submit} className="relative w-full max-w-[400px] rounded-3xl bg-surface p-9 shadow-card">
-        <div className="text-center">
-          <div className="font-serif text-5xl font-bold leading-none text-gold">M&amp;D</div>
-          <div className="mt-2 text-[11px] font-bold uppercase tracking-[0.3em] text-ink-3">MDs Manager</div>
-          <h1 className="mt-6 font-serif text-[28px] font-bold text-brand">Вхід до системи</h1>
-          <p className="mt-1 text-sm text-ink-2">AI-адміністратор салону</p>
-        </div>
+  const message =
+    lockedFor > 0 ? `Забагато спроб. Спробуйте через 15 хвилин (залишилось ${minutesLabel(lockedFor)}).` : error;
 
-        <label className="mt-8 block text-xs font-semibold text-ink-2">
-          Email
-          <span className="mt-1.5 flex items-center gap-2 rounded-xl border border-line bg-surface-2 px-3 py-3 focus-within:border-gold">
-            <Mail size={16} className="text-ink-3" />
-            <input
-              type="email"
+  return (
+    <div className="relative flex min-h-full items-center justify-center overflow-hidden bg-bg px-4 py-10 sm:px-6">
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(900px_480px_at_85%_-10%,rgba(180,138,62,.14),transparent_60%),radial-gradient(700px_420px_at_0%_110%,rgba(20,57,44,.10),transparent_60%)]"
+      />
+      <main className="relative w-full max-w-[400px]">
+        <div className="relative overflow-hidden rounded-xl border border-line bg-surface px-6 pb-7 pt-9 shadow-lg sm:px-8">
+          <div aria-hidden="true" className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-brand via-gold to-brand" />
+
+          <div className="text-center">
+            <div
+              aria-hidden="true"
+              className="mx-auto mb-4 grid h-[66px] w-[66px] place-items-center rounded-xl bg-gradient-to-br from-[#d8b46a] to-[#a9823b] font-serif text-[22px] font-semibold text-[#1a1408] shadow-[0_0_0_6px_theme(colors.gold.tint),0_10px_28px_rgba(180,138,62,.3)]"
+            >
+              M&amp;D
+            </div>
+            <h1 className="font-serif text-[34px] font-semibold leading-none text-brand">M&amp;D</h1>
+            <div className="mt-2 text-2xs font-semibold uppercase tracking-[0.24em] text-ink-3">MDs Manager</div>
+            <p className="mt-5 text-sm text-ink-2">Увійдіть у систему</p>
+          </div>
+
+          <form onSubmit={submit} noValidate className="mt-6 flex flex-col gap-4">
+            <Input
+              ref={idRef}
+              label="Логін або Email"
+              name="identifier"
               autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
+              placeholder="admin"
+              iconLeft={<User size={16} />}
+              value={identifier}
+              onChange={(e) => setIdentifier(e.target.value)}
               required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full bg-transparent text-sm text-ink outline-none"
             />
-          </span>
-        </label>
-        <label className="mt-4 block text-xs font-semibold text-ink-2">
-          Пароль
-          <span className="mt-1.5 flex items-center gap-2 rounded-xl border border-line bg-surface-2 px-3 py-3 focus-within:border-gold">
-            <Lock size={16} className="text-ink-3" />
-            <input
+            <Input
+              ref={passRef}
+              label="Пароль"
+              name="password"
               type="password"
               autoComplete="current-password"
-              required
+              iconLeft={<Lock size={16} />}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-transparent text-sm text-ink outline-none"
+              required
             />
-          </span>
-        </label>
 
-        {error && (
-          <p role="alert" className="mt-4 rounded-xl bg-[#f9e9e6] px-3 py-2 text-sm text-[#9b3b2c]">
-            {error}
-          </p>
-        )}
+            {message && (
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger-bg px-3 py-2 text-sm text-danger"
+              >
+                <AlertCircle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
+                <span>{message}</span>
+              </div>
+            )}
 
-        <button
-          type="submit"
-          disabled={busy}
-          className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-3 text-sm font-bold text-brand-ink transition hover:bg-brand-2 disabled:opacity-60"
-        >
-          {busy && <Loader2 size={16} className="animate-spin" />}
-          Увійти
-        </button>
-        <p className="mt-5 text-center text-xs text-ink-3">Салон краси M&amp;D · Київ</p>
-      </form>
+            <Button
+              type="submit"
+              size="lg"
+              fullWidth
+              loading={busy}
+              disabled={lockedFor > 0}
+              iconRight={<ArrowRight size={16} />}
+              className="mt-1"
+            >
+              Увійти
+            </Button>
+          </form>
+        </div>
+        <p className="mt-5 flex items-center justify-center gap-1.5 text-center text-xs text-ink-3">
+          <Lock size={12} aria-hidden="true" />
+          Салон краси M&amp;D · доступ лише для персоналу
+        </p>
+      </main>
     </div>
   );
 }

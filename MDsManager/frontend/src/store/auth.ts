@@ -1,70 +1,61 @@
-import axios from 'axios';
 import { create } from 'zustand';
-import { loginRequest, logoutRequest, tokenStorage } from '../api/client';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import type { User } from '../types';
 
-const USER_KEY = 'mds.user';
-const MOCK_TOKEN = 'mock-token';
-
-// Демо-вхід, коли бекенд не запущено — лише в `npm run dev`, у зібраній версії вимкнено
-const MOCK_USER: User = {
-  uuid: 'mock-admin',
-  email: 'admin@mds.local',
-  display_name: 'Директор',
-  role: 'director',
-};
-
-function loadUser(): User | null {
-  try {
-    const raw = localStorage.getItem(USER_KEY);
-    return raw ? (JSON.parse(raw) as User) : null;
-  } catch {
-    return null;
-  }
-}
+/** localStorage key; other tabs listen to it (see lib/refresh.ts → startAuthSync). */
+export const AUTH_STORAGE_KEY = 'mds_auth';
 
 interface AuthState {
   token: string | null;
   user: User | null;
+  /** Session end, ms since epoch (UTC). */
+  expiresAt: number | null;
+  /** Dev-only offline demo login (no backend): no refresh, no API calls. */
   isMock: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  setAuth: (token: string, user: User, expiresAt: number, isMock?: boolean) => void;
+  setUser: (user: User) => void;
+  clearAuth: () => void;
+  /** Token present and not expired. */
+  isAuthenticated: () => boolean;
 }
 
-export const useAuth = create<AuthState>((set, get) => ({
-  token: tokenStorage.get(),
-  user: loadUser(),
-  isMock: tokenStorage.get() === MOCK_TOKEN,
+/** Pure check, usable in selectors: `useAuthStore(selectIsAuthenticated)`. */
+export const selectIsAuthenticated = (s: Pick<AuthState, 'token' | 'expiresAt'>): boolean =>
+  Boolean(s.token) && s.expiresAt !== null && s.expiresAt > Date.now();
 
-  async login(email, password) {
-    try {
-      const res = await loginRequest(email, password);
-      tokenStorage.set(res.token);
-      localStorage.setItem(USER_KEY, JSON.stringify(res.user));
-      set({ token: res.token, user: res.user, isMock: false });
-    } catch (err) {
-      const offline = axios.isAxiosError(err) && (!err.response || err.response.status >= 500);
-      if (import.meta.env.DEV && offline && email.trim().toLowerCase() === MOCK_USER.email && password === 'admin') {
-        tokenStorage.set(MOCK_TOKEN);
-        localStorage.setItem(USER_KEY, JSON.stringify(MOCK_USER));
-        set({ token: MOCK_TOKEN, user: MOCK_USER, isMock: true });
-        return;
-      }
-      if (axios.isAxiosError(err) && err.response?.status === 401) {
-        throw new Error('Невірний email або пароль');
-      }
-      if (axios.isAxiosError(err) && err.response?.status === 429) {
-        throw new Error('Забагато спроб входу. Спробуйте через 15 хвилин');
-      }
-      if (offline) throw new Error('Сервер недоступний. Спробуйте пізніше');
-      throw new Error('Не вдалося увійти');
-    }
-  },
+export const useAuthStore = create<AuthState>()(
+  persist(
+    (set, get) => ({
+      token: null,
+      user: null,
+      expiresAt: null,
+      isMock: false,
+      setAuth: (token, user, expiresAt, isMock = false) => set({ token, user, expiresAt, isMock }),
+      setUser: (user) => set({ user }),
+      clearAuth: () => set({ token: null, user: null, expiresAt: null, isMock: false }),
+      isAuthenticated: () => selectIsAuthenticated(get()),
+    }),
+    {
+      name: AUTH_STORAGE_KEY,
+      storage: createJSONStorage(() => localStorage),
+      partialize: (s) => ({ token: s.token, user: s.user, expiresAt: s.expiresAt, isMock: s.isMock }),
+    },
+  ),
+);
 
-  logout() {
-    if (!get().isMock) logoutRequest().catch(() => undefined);
-    tokenStorage.clear();
-    localStorage.removeItem(USER_KEY);
-    set({ token: null, user: null, isMock: false });
-  },
-}));
+/** @deprecated Use `useAuthStore`; kept so untouched pages (Inbox) keep compiling. */
+export const useAuth = useAuthStore;
+
+/** Parses the backend's ISO datetime; a value without a zone is treated as UTC. */
+export function parseExpiry(iso: string): number {
+  const hasZone = /(Z|[+-]\d\d:?\d\d)$/.test(iso);
+  return Date.parse(hasZone ? iso : `${iso}Z`);
+}
+
+// Ключі попередньої версії входу — прибираємо, щоб не лишався старий токен
+try {
+  localStorage.removeItem('mds.token');
+  localStorage.removeItem('mds.user');
+} catch {
+  /* private mode */
+}

@@ -8,7 +8,8 @@ import {
   Settings,
   Users,
 } from 'lucide-react';
-import { useAuth } from '../store/auth';
+import { logout } from '../lib/session';
+import { useAuthStore } from '../store/auth';
 
 const NAV = [
   { key: 'chats', label: 'Чати', Icon: MessageCircle, badge: 4 },
@@ -20,7 +21,7 @@ const NAV = [
 ];
 
 export default function Sidebar({ active = 'chats' }: { active?: string }) {
-  const { user, logout } = useAuth();
+  const user = useAuthStore((s) => s.user);
   return (
     <aside className="flex w-24 shrink-0 flex-col items-center bg-brand py-6 text-brand-ink">
       <div className="mb-8 font-serif text-[28px] font-bold leading-none tracking-wide text-gold">
@@ -60,7 +61,13 @@ export default function Sidebar({ active = 'chats' }: { active?: string }) {
         >
           {user?.display_name?.[0] ?? 'Д'}
         </div>
-        <button type="button" title="Вийти" onClick={logout} className="rounded-xl p-2 text-brand-ink/50 hover:text-brand-ink">
+        <button
+          type="button"
+          title="Вийти"
+          aria-label="Вийти"
+          onClick={logout}
+          className="rounded-xl p-2 text-brand-ink/50 transition hover:bg-brand-2 hover:text-brand-ink focus-visible:outline-none focus-visible:shadow-ring"
+        >
           <LogOut size={18} />
         </button>
       </div>

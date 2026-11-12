@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
+import AuthProvider from './components/AuthProvider';
 import ProtectedRoute from './components/ProtectedRoute';
 import { ToastContainer } from './components/ui';
 import InboxPage from './pages/InboxPage';
@@ -10,7 +11,7 @@ const DemoPage = import.meta.env.DEV ? lazy(() => import('./pages/_DemoPage')) :
 
 export default function App() {
   return (
-    <>
+    <AuthProvider>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route
@@ -31,6 +32,6 @@ export default function App() {
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       <ToastContainer />
-    </>
+    </AuthProvider>
   );
 }
