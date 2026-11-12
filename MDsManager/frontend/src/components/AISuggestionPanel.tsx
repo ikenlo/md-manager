@@ -1,6 +1,6 @@
 import { Bot, CalendarCheck, Check, RefreshCw, X } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
-import type { AIIntent, AIProposedBooking, AISuggestion } from '../types';
+import type { AIIntent, AISuggestion } from '../types';
 import { Button, Chip, Field, cn, type ChipVariant } from './ui';
 
 const MAX_LENGTH = 5000;
@@ -13,20 +13,10 @@ const INTENT: Record<AIIntent, { label: string; variant: ChipVariant }> = {
   unknown: { label: '?', variant: 'new' },
 };
 
-/** «2026-12-01» → «01.12.2026»; інше лишається як є. */
+/** «2026-12-01» → «01.12.2026» для картки запису; інше лишається як є. */
 function formatDate(iso: string): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
   return m ? `${m[3]}.${m[2]}.${m[1]}` : iso;
-}
-
-/** Той самий текст, що сервер складає при схваленні запису без message_text. */
-export function bookingConfirmationText(b: AIProposedBooking): string {
-  return `Вас записано на ${b.service_name || 'послугу'} ${formatDate(b.date)} о ${b.time}. Чекаємо вас! 😊`;
-}
-
-/** Текст, який піде клієнту після схвалення: для запису — підтвердження, інакше — відповідь AI. */
-export function initialReplyText(s: AISuggestion): string {
-  return s.proposed_booking ? bookingConfirmationText(s.proposed_booking) : s.content;
 }
 
 export interface AISuggestionPanelProps {
@@ -48,8 +38,9 @@ export interface AISuggestionPanelProps {
  * Card with a pending AI reply: intent, proposed booking, editable text for the client,
  * and approve / reject / regenerate actions. Nothing reaches the client until «Схвалити».
  *
- * For bookings the textarea starts with the confirmation the client will receive
- * («Вас записано на …»), not with the AI's neutral holding reply.
+ * The textarea starts with `suggestion.suggested_message` — built by the server, so it is exactly
+ * what the client receives on approve without edits (for bookings: the ready confirmation,
+ * not the AI's neutral holding reply).
  */
 export function AISuggestionPanel({
   suggestion,
@@ -62,13 +53,13 @@ export function AISuggestionPanel({
   onClose,
   className,
 }: AISuggestionPanelProps) {
-  const [text, setText] = useState(() => initialReplyText(suggestion));
+  const [text, setText] = useState(suggestion.suggested_message);
   const textareaId = useId();
   const counterId = useId();
 
   // нова пропозиція (перегенерація) — новий текст
   useEffect(() => {
-    setText(initialReplyText(suggestion));
+    setText(suggestion.suggested_message);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- лише при зміні пропозиції
   }, [suggestion.uuid]);
 
