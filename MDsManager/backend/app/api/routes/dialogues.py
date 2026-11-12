@@ -11,17 +11,25 @@ from app.schemas.dialogue import (
     DialogueList,
     DialogueOut,
     DialogueStatus,
-    MessageIn,
+    MessageCreateRequest,
     MessageOut,
 )
 from app.services import dialogues as svc
+from app.services.events import NEW_MESSAGE, events
 
 router = APIRouter(prefix="/api/dialogues", tags=["dialogues"])
 
 
 def message_out(m: Message) -> MessageOut:
     return MessageOut(
-        uuid=m.uuid, sender_type=m.sender_type, content=m.content, created_at=m.created_at
+        id=m.id,
+        uuid=m.uuid,
+        sender_type=m.sender_type,
+        content=m.content,
+        direction=m.direction,
+        status=m.status,
+        attachments=m.attachments,
+        created_at=m.created_at,
     )
 
 
@@ -79,13 +87,33 @@ def get_messages(
     return [message_out(m) for m in svc.list_messages(db, d, limit, before_id)]
 
 
-@router.post("/{uuid}/messages", response_model=MessageOut, status_code=201)
-def post_message(
+@router.post(
+    "/{uuid}/messages",
+    response_model=MessageOut,
+    status_code=201,
+    summary="Надіслати повідомлення клієнту",
+    description=(
+        "Створює вихідне повідомлення зі статусом `queued` і ставить його в чергу. "
+        "Воркер відправить його через Meta протягом OUTBOUND_INTERVAL_SECONDS "
+        "і змінить статус на `sent` або `failed`."
+    ),
+    responses={
+        400: {"description": "Порожній текст"},
+        404: {"description": "Діалог не знайдено"},
+    },
+)
+async def post_message(
     uuid: str,
-    body: MessageIn,
+    body: MessageCreateRequest,
     db: Session = Depends(get_db),
     _: User = Depends(current_user),
 ) -> MessageOut:
+    text = body.text.strip()
+    if not text:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Порожнє повідомлення")
     d = _get_or_404(db, uuid)
-    # Фаза 1: лише зберігаємо; відправку в канал додамо разом з інтеграціями
-    return message_out(svc.add_message(db, d, body.sender_type, body.content.strip()))
+    out = message_out(svc.create_outbound_message(db, d, text))
+    await events.emit(
+        NEW_MESSAGE, {"dialogue_uuid": d.uuid, "message": out.model_dump(mode="json")}
+    )
+    return out

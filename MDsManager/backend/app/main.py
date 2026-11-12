@@ -1,6 +1,9 @@
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from pathlib import Path
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -11,15 +14,47 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from app.api.routes import auth, dialogues, settings
 from app.config import FRONTEND_DIST, get_settings
 from app.security import HTTPSRedirectMiddleware
+from app.services.outbound_worker import OutboundWorker
 from app.services.rate_limit import limiter, rate_limit_handler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("mds")
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    cfg = get_settings()
+    scheduler: AsyncIOScheduler | None = None
+    if cfg.outbound_worker_enabled:
+        worker = OutboundWorker()
+        scheduler = AsyncIOScheduler(timezone="UTC")
+        # max_instances=1 + coalesce: прогони не накладаються і не накопичуються
+        scheduler.add_job(
+            worker.process_once,
+            "interval",
+            seconds=cfg.outbound_interval_seconds,
+            id="outbound_worker",
+            max_instances=1,
+            coalesce=True,
+        )
+        scheduler.start()
+        log.info(
+            "Outbound worker started (interval: %d sec, mock_meta: %s)",
+            cfg.outbound_interval_seconds,
+            cfg.mock_meta,
+        )
+    app.state.scheduler = scheduler
+    try:
+        yield
+    finally:
+        if scheduler is not None:
+            scheduler.shutdown(wait=False)
+
+
 def create_app() -> FastAPI:
     cfg = get_settings()
     app = FastAPI(
+        lifespan=lifespan,
         title="MDs Manager",
         version="0.1.0",
         # Публічно (через тунель) схему API не показуємо

@@ -39,6 +39,8 @@ class Settings(BaseSettings):
 
     # Диспетчер (Фаза 2). MOCK_META=true — без реальних викликів Meta Graph API
     mock_meta: bool = Field(True, alias="MOCK_META")
+    # false — воркер черги не стартує (тести, разові скрипти)
+    outbound_worker_enabled: bool = Field(True, alias="OUTBOUND_WORKER_ENABLED")
     outbound_interval_seconds: int = Field(30, ge=1, alias="OUTBOUND_INTERVAL_SECONDS")
     max_outbound_retries: int = Field(5, ge=1, alias="MAX_OUTBOUND_RETRIES")
     # Вкладення з Meta зберігаються локально (лише прямі слеші)

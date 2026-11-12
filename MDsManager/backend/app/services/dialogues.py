@@ -1,7 +1,7 @@
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models import Channel, CrmClient, DialogTag, Dialogue, Message
+from app.models import Channel, CrmClient, DialogTag, Dialogue, Message, OutboundQueue
 from app.models.base import utcnow
 
 
@@ -69,11 +69,25 @@ def list_messages(db: Session, dialogue: Dialogue, limit: int, before_id: int | 
     return list(reversed(rows))
 
 
-def add_message(db: Session, dialogue: Dialogue, sender_type: str, content: str) -> Message:
-    msg = Message(dialogue_id=dialogue.id, sender_type=sender_type, content=content)
+def create_outbound_message(db: Session, dialogue: Dialogue, text: str) -> Message:
+    """Повідомлення оператора + запис у чергу вихідних (одна транзакція).
+
+    last_outbound_at не чіпаємо — його ставить воркер після фактичної відправки.
+    """
+    now = utcnow()
+    msg = Message(
+        dialogue_id=dialogue.id,
+        sender_type="human",
+        content=text,
+        direction="outbound",
+        status="queued",
+        created_at=now,
+    )
     db.add(msg)
-    dialogue.last_message_at = utcnow()
-    if dialogue.status == "new" and sender_type != "client":
+    db.flush()
+    db.add(OutboundQueue(message_id=msg.id, status="pending", next_retry_at=now))
+    dialogue.last_message_at = now
+    if dialogue.status == "new":
         dialogue.status = "in_progress"
     db.commit()
     db.refresh(msg)

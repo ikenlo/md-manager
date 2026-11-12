@@ -97,6 +97,11 @@ def seed_demo(db: Session) -> None:
     now = utcnow()
     for i, (name, handle, ch, status, tags, msgs) in enumerate(DEMO):
         client = CrmClient(name=name, instagram_handle=handle)
+        # демо-ідентифікатори Meta — щоб MockMetaAdapter мав кому «відправляти»
+        if ch == "instagram":
+            client.meta_ig_user_id = f"demo-ig-{handle}"
+        elif ch == "facebook":
+            client.meta_fb_user_id = f"demo-fb-{handle}"
         d = Dialogue(
             client=client,
             channel=channels[ch],
@@ -107,9 +112,19 @@ def seed_demo(db: Session) -> None:
         d.tags = [DialogTag(tag_name=t) for t in tags]
         base = now - timedelta(minutes=10 * i + len(msgs))
         d.messages = [
-            Message(sender_type=s, content=c, created_at=base + timedelta(minutes=k))
+            Message(
+                sender_type=s,
+                content=c,
+                created_at=base + timedelta(minutes=k),
+                direction="inbound" if s == "client" else "outbound",
+                status="delivered" if s == "client" else "sent",
+            )
             for k, (s, c) in enumerate(msgs)
         ]
+        inbound = [m.created_at for m in d.messages if m.direction == "inbound"]
+        outbound = [m.created_at for m in d.messages if m.direction == "outbound"]
+        d.last_inbound_at = max(inbound) if inbound else None
+        d.last_outbound_at = max(outbound) if outbound else None
         db.add(d)
     db.commit()
     log.info("Додано %d демо-діалоги", len(DEMO))

@@ -4,6 +4,7 @@ from cryptography.fernet import Fernet
 
 os.environ.setdefault("ENCRYPTION_KEY", Fernet.generate_key().decode())
 os.environ["DB_PATH"] = ":memory:"
+os.environ["OUTBOUND_WORKER_ENABLED"] = "false"
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
@@ -25,7 +26,8 @@ def _reset_rate_limit():
 
 
 @pytest.fixture
-def db_session():
+def session_factory():
+    """Фабрика сесій на спільному in-memory з'єднанні (для воркера та інших фонових задач)."""
     from sqlalchemy import create_engine, event
 
     engine = create_engine(
@@ -33,12 +35,16 @@ def db_session():
     )
     event.listen(engine, "connect", _set_sqlite_pragmas)
     Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-    with Session() as s:
+    yield sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    engine.dispose()
+
+
+@pytest.fixture
+def db_session(session_factory):
+    with session_factory() as s:
         seed_admin(s)
         seed_demo(s)
         yield s
-    engine.dispose()
 
 
 @pytest.fixture

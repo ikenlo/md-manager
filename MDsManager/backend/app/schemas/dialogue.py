@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 DialogueStatus = Literal["new", "in_progress", "ordered", "lost"]
 ChannelType = Literal["instagram", "facebook", "telegram"]
@@ -22,9 +22,13 @@ class ChannelOut(BaseModel):
 
 
 class MessageOut(BaseModel):
+    id: int
     uuid: str
     sender_type: str
     content: str
+    direction: str
+    status: str
+    attachments: list[dict[str, Any]] | None = None
     created_at: datetime
 
 
@@ -44,6 +48,10 @@ class DialogueList(BaseModel):
     total: int
 
 
-class MessageIn(BaseModel):
-    content: str = Field(min_length=1, max_length=4000)
-    sender_type: Literal["human"] = "human"
+class MessageCreateRequest(BaseModel):
+    """Повідомлення від оператора. `content` — стара назва поля (Фаза 1), приймається теж."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    # порожній / з пробілів → 400 у роутері (не 422), тож min_length тут немає
+    text: str = Field(max_length=5000, validation_alias=AliasChoices("text", "content"))

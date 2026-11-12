@@ -37,9 +37,10 @@ def test_messages_and_post(client, auth):
 def test_post_validation_and_404(client, auth):
     d = client.get("/api/dialogues", headers=auth).json()["items"][0]
     url = f"/api/dialogues/{d['uuid']}/messages"
-    assert client.post(url, headers=auth, json={"content": ""}).status_code == 422
+    assert client.post(url, headers=auth, json={"content": ""}).status_code == 400
+    assert client.post(url, headers=auth, json={"text": "x" * 5001}).status_code == 422
     assert (
-        client.post(url, headers=auth, json={"content": "x", "sender_type": "agent"}).status_code
+        client.post(url, headers=auth, json={"text": "x", "sender_type": "agent"}).status_code
         == 422
     )
     assert client.get("/api/dialogues/nope/messages", headers=auth).status_code == 404
