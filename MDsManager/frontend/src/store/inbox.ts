@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import { fetchDialogues, fetchMessages, postMessage, previewOf, toDialogue, toMessage } from '../api/inbox';
+import { getAIMode } from '../lib/ai_mode';
 import type { DialogueUpdatedEvent, MessageStatusEvent, NewMessageEvent } from '../lib/ws';
 import type { Dialogue, DialogueStatus, Message, MessageStatus } from '../types';
+import { useAIStore } from './ai';
 
 export type InboxFilter = 'all' | 'new' | 'in_progress' | 'ordered' | 'unread';
 /** api — реальні дані бекенда; mock — демо (вхід без сервера в dev). */
@@ -35,6 +37,66 @@ function upsert(list: Message[], m: Message): { list: Message[]; existed: boolea
   const next = list.slice();
   next[i] = merged;
   return { list: next, existed: true };
+}
+
+// --- Автозапуск AI (режим «AI авто») ---
+
+const AUTO_CLAIM_PREFIX = 'mds_ai_auto_';
+const AUTO_CLAIM_TTL_MS = 10 * 60_000;
+const claimedHere = new Set<string>();
+
+/** Чи вже хтось (ця чи інша вкладка) запускав AI на це повідомлення. */
+function alreadyClaimed(key: string): boolean {
+  try {
+    const prev = localStorage.getItem(key);
+    return Boolean(prev) && Date.now() - Number(prev) < AUTO_CLAIM_TTL_MS;
+  } catch {
+    return false;
+  }
+}
+
+function markClaimed(key: string): void {
+  try {
+    localStorage.setItem(key, String(Date.now()));
+  } catch {
+    /* недоступне сховище — захищає лише claimedHere */
+  }
+}
+
+/**
+ * Один запуск AI на одне вхідне повідомлення — навіть якщо подія прийде повторно
+ * (оновлення вкладення) або відкрито кілька вкладок (кожна отримує ту саму WS-подію).
+ * Між вкладками атомарність дає Web Locks API: блокування тримаємо до кінця відповіді AI,
+ * а позначка в localStorage не дає повторити запуск після нього.
+ */
+async function runOnce(messageUuid: string, run: () => Promise<unknown>): Promise<void> {
+  if (claimedHere.has(messageUuid)) return;
+  claimedHere.add(messageUuid);
+  const key = AUTO_CLAIM_PREFIX + messageUuid;
+  const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+  if (!locks) {
+    // без Web Locks (http, старий браузер) — найкраще, що можна: позначка в localStorage
+    if (alreadyClaimed(key)) return;
+    markClaimed(key);
+    await run();
+    return;
+  }
+  await locks.request(key, { ifAvailable: true }, async (lock) => {
+    if (!lock || alreadyClaimed(key)) return; // інша вкладка вже працює або вже відпрацювала
+    markClaimed(key);
+    await run();
+  });
+}
+
+/** Нове вхідне в діалозі з режимом «AI авто» і без відкритої пропозиції → AI готує відповідь. */
+function maybeAutoRespond(dialogueUuid: string, messageUuid: string): void {
+  if (getAIMode(dialogueUuid) !== 'auto') return;
+  const ai = useAIStore.getState();
+  if (ai.pendingByDialogue[dialogueUuid] || ai.responding[dialogueUuid]) return;
+  // помилки (503, мережа) показує сам respond тостом
+  runOnce(messageUuid, () => useAIStore.getState().respond(dialogueUuid)).catch((err) =>
+    console.warn('Auto-trigger AI failed:', err),
+  );
 }
 
 export interface WsNewMessageResult {
@@ -175,6 +237,7 @@ export const useInboxStore = create<InboxState>((set, get) => ({
       if (!e.dialogue) return { notify: false, needsResync: true };
       const fresh = toDialogue(e.dialogue);
       get().addDialogueFromPayload(fresh, [msg]);
+      if (isInbound(msg)) maybeAutoRespond(fresh.uuid, msg.uuid);
       return { notify: isInbound(msg), clientName: fresh.client.name, needsResync: false };
     }
 
@@ -201,6 +264,7 @@ export const useInboxStore = create<InboxState>((set, get) => ({
         )
         .sort(byLastDesc),
     });
+    if (isInbound(msg) && !existed) maybeAutoRespond(d.uuid, msg.uuid);
     return { notify: bump, clientName: d.client.name, needsResync: false };
   },
 

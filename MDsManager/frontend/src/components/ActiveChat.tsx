@@ -9,7 +9,6 @@ import {
   FileText,
   Flag,
   Hand,
-  Loader2,
   MessageCircle,
   Phone,
   Send,
@@ -230,7 +229,8 @@ export default function ActiveChat({ className }: { className?: string }) {
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' });
-  }, [activeUuid, messages.length]);
+    // responding — щоб бульбашка «AI аналізує» була в полі зору
+  }, [activeUuid, messages.length, responding]);
 
   useEffect(() => setText(''), [activeUuid]);
 
@@ -373,6 +373,27 @@ export default function ActiveChat({ className }: { className?: string }) {
               </Fragment>
             );
           })}
+          {responding && (
+            <div role="status" aria-label="AI аналізує розмову" className="flex items-end justify-end gap-2">
+              <div className="rounded-2xl rounded-br-none bg-brand px-4 py-2.5 text-brand-ink shadow-sm">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm">AI аналізує</span>
+                  <span className="flex gap-1" aria-hidden="true">
+                    {[0, 150, 300].map((delay) => (
+                      <span
+                        key={delay}
+                        className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand-ink/60 motion-reduce:animate-none"
+                        style={{ animationDelay: `${delay}ms` }}
+                      />
+                    ))}
+                  </span>
+                </div>
+              </div>
+              <span className="mb-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full border border-gold/30 bg-brand-2 shadow-sm">
+                <Bot size={16} className="text-gold" aria-hidden="true" />
+              </span>
+            </div>
+          )}
           <div ref={endRef} />
         </div>
       </div>
@@ -427,13 +448,8 @@ export default function ActiveChat({ className }: { className?: string }) {
         <div className="mb-2 flex min-h-8 flex-wrap items-center gap-2 text-xs text-ink-3">
           {/* на телефоні в шапці немає місця — перемикач тут */}
           <AIModeToggle mode={mode} onChange={changeMode} className="sm:hidden" />
-          {hasPending ? null : responding ? (
-            // з відкритою панеллю очікування показує кнопка «Перегенерувати»
-            <span role="status" className="inline-flex items-center gap-1.5">
-              <Loader2 size={14} className="animate-spin" aria-hidden="true" />
-              AI думає...
-            </span>
-          ) : mode !== 'human' ? (
+          {/* очікування AI показує бульбашка «AI аналізує» в чаті (або кнопка панелі) */}
+          {hasPending || responding ? null : mode !== 'human' ? (
             <Button
               type="button"
               variant="ghost"
