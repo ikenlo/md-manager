@@ -10,9 +10,11 @@ import {
 } from 'lucide-react';
 import { logout } from '../lib/session';
 import { useAuthStore } from '../store/auth';
+import { useInboxStore } from '../store/inbox';
+import { Badge } from './ui';
 
 const NAV = [
-  { key: 'chats', label: 'Чати', Icon: MessageCircle, badge: 4 },
+  { key: 'chats', label: 'Чати', Icon: MessageCircle },
   { key: 'calendar', label: 'Записи', Icon: CalendarDays },
   { key: 'clients', label: 'Клієнти', Icon: Users },
   { key: 'agents', label: 'AI-агенти', Icon: Bot },
@@ -22,13 +24,15 @@ const NAV = [
 
 export default function Sidebar({ active = 'chats' }: { active?: string }) {
   const user = useAuthStore((s) => s.user);
+  const totalUnread = useInboxStore((s) => s.dialogues.reduce((a, d) => a + d.unread_count, 0));
   return (
     <aside className="flex w-24 shrink-0 flex-col items-center bg-brand py-6 text-brand-ink">
       <div className="mb-8 font-serif text-[28px] font-bold leading-none tracking-wide text-gold">
         M&amp;D
       </div>
       <nav className="flex flex-1 flex-col items-center gap-2">
-        {NAV.map(({ key, label, Icon, badge }) => {
+        {NAV.map(({ key, label, Icon }) => {
+          const badge = key === 'chats' ? totalUnread : 0;
           const on = key === active;
           return (
             <button
@@ -42,11 +46,12 @@ export default function Sidebar({ active = 'chats' }: { active?: string }) {
               {on && <span className="absolute left-[-12px] top-3 h-6 w-1 rounded-r bg-gold" />}
               <Icon size={22} strokeWidth={1.8} />
               {label}
-              {badge ? (
-                <span className="absolute right-3 top-1.5 min-w-[18px] rounded-full bg-gold px-1 text-[10px] leading-[18px] text-brand">
-                  {badge}
-                </span>
-              ) : null}
+              <Badge
+                count={badge}
+                variant="danger"
+                className="absolute right-2.5 top-1.5 ring-2 ring-brand"
+                aria-label={`${badge} непрочитаних`}
+              />
             </button>
           );
         })}

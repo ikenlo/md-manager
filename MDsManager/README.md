@@ -171,3 +171,16 @@ CORS_ORIGINS=http://localhost:5173,https://manager.ваш-домен.com
 
 Додатково (рекомендовано): у панелі Cloudflare увімкнути **SSL/TLS → Always Use HTTPS** і закрити
 домен **Cloudflare Access** (вхід за email-кодом) — тоді до сторінки входу дістануться лише ваші люди.
+
+## Phase 1.5 — Design System (COMPLETE)
+
+- Design tokens match MDs Connect (shared visual language): кольори, шрифти Manrope / Cormorant (локально), радіуси, тіні
+- 11 reusable UI components in `frontend/src/components/ui/`
+- Auth: login + 401 + idle (30 min) + refresh + logout
+- Inbox: 3-column, mobile <900px, WebSocket stub ready (`frontend/src/lib/ws.ts`)
+
+Demo page (dev only): `npm run dev` → http://localhost:5173/_demo
+
+Підсумок змін і обмеження — [docs/REWRITE_SUMMARY.md](docs/REWRITE_SUMMARY.md).
+
+Next: Phase 2 (real channels via Connect webhook queue)
