@@ -11,7 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 
-from app.api.routes import _test, auth, dialogues, media, settings, ws
+from app.api.routes import _test, ai, auth, dialogues, media, settings, ws
 from app.config import FRONTEND_DIST, get_settings
 from app.database import SessionLocal
 from app.security import HTTPSRedirectMiddleware
@@ -110,6 +110,7 @@ def create_app() -> FastAPI:
 
     app.include_router(auth.router)
     app.include_router(dialogues.router)
+    app.include_router(ai.router)
     app.include_router(settings.router)
     app.include_router(media.router)
     app.include_router(ws.router)

@@ -87,7 +87,7 @@
 - Part 2: AI Agent service (orchestrator) + tools (`get_services`, `get_slots`, `create_appointment`) + intent detection
 - Part 3: Frontend (toggle AI lead/human lead, approve UI for bookings, real-time "AI typing" indicator)
 
-## Phase 3 Part 2 (IN PROGRESS — AI agent + human-in-the-loop)
+## Phase 3 Part 2 (COMPLETE — AI agent + human-in-the-loop)
 
 ### Tools and agent
 - `services/tools/`: `get_services`, `get_slots` (mock data) and `create_appointment` + registry `execute_tool`.
@@ -103,6 +103,22 @@
   (pending / approved / rejected / expired), resolved_at, resolved_by_user_id, message_id (client message).
 - Cascade: deleting dialogue removes its suggestions.
 - Migration 0003.
+
+### Service and endpoints
+- `services/ai_suggestions.py`: save (expires the previous pending of the dialogue), get pending, approve
+  (executes `proposed_booking` first → message + outbound queue + `new_message` event, all in one transaction;
+  booking error → nothing sent, stays pending; approvals serialized against double clicks), reject,
+  `expire_stale` (pending older than 24h; hourly job in `main.py`).
+- `api/routes/ai.py`: `POST …/ai/respond`, `GET …/ai/pending`, `POST …/ai/{uuid}/approve` (optional `message_text`;
+  default for bookings — «Вас записано на {послуга} {ДД.ММ.РРРР} о {час}»), `POST …/ai/{uuid}/reject`.
+- Prompt: on `pending_approval` the model says something neutral («Хвилинку, уточнюю деталі»);
+  the final confirmation is sent by the admin on approve.
+- Tests: 179 passed, 1 skipped.
+
+### Known limitations
+- The admin's edited / auto-generated text replaces the AI draft in `ai_suggestions.content` (the original draft is not kept).
+- Reject `reason` is not stored (logged by length only) — no column for it yet.
+- `respond` is triggered manually (no auto-run on new inbound message yet) — Part 3.
 
 ## What's next (Phase 2.5 / 3)
 
