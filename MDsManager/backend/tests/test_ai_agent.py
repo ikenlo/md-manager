@@ -2,8 +2,6 @@ import asyncio
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
-import pytest
-
 from app.services.adapters.ollama_base import OllamaAdapter, OllamaError
 from app.services.adapters.ollama_mock import MockOllamaAdapter
 from app.services.ai_agent import (
@@ -88,14 +86,111 @@ def test_run_agent_with_tool_call_get_services():
 def test_run_agent_with_booking_needs_approval():
     booking = {"service_name": "Манікюр", "date": "2026-12-01", "time": "10:00"}
     adapter = SequentialAdapter(
-        [call("create_appointment", booking), text("Записала вас на манікюр 1 грудня о 10:00!")]
+        [call("create_appointment", booking), text("Передала адміністратору на підтвердження")]
     )
     result = run(adapter)
     assert result["needs_approval"] is True
     pb = result["proposed_booking"]
-    assert (pb["service_name"], pb["date"], pb["time"]) == ("Манікюр", "2026-12-01", "10:00")
-    assert pb["result"]["ok"] is True
-    assert result["intent"] == "booking"
+    assert pb["service_name"] == "Манікюр" and pb["tool"] == "create_appointment"
+    assert (pb["date"], pb["time"]) == ("2026-12-01", "10:00")
+    assert pb["arguments"] == booking
+    assert result["intent"] == "booking" and result["iterations"] == 2
+    assert result["content"] == "Передала адміністратору на підтвердження"
+
+    tool_result = result["tool_calls_history"][0]["result"]
+    assert tool_result["pending_approval"] is True
+    assert tool_result["args"] == booking and tool_result["tool"] == "create_appointment"
+    assert "ok" not in tool_result and "booking_id" not in tool_result  # не виконано
+    # модель отримала pending_approval і пояснення, що запис ще не створено
+    sent_tool_msg = adapter.calls[1][0][-1]
+    assert (
+        sent_tool_msg["role"] == "tool" and '"pending_approval": true' in sent_tool_msg["content"]
+    )
+    assert "НЕ створено" in sent_tool_msg["content"]
+
+
+def test_run_agent_write_tool_is_not_executed(monkeypatch):
+    import app.services.tools.registry as registry
+
+    async def boom(**_):
+        raise AssertionError("create_appointment must not run inside the agent")
+
+    monkeypatch.setitem(registry.TOOLS, "create_appointment", boom)
+    booking = {"service_name": "Стрижка", "date": "2026-12-02", "time": "13:00"}
+    result = run(SequentialAdapter([call("create_appointment", booking), text("Передала")]))
+    assert result["needs_approval"] is True
+
+
+def test_run_agent_booking_missing_args():
+    adapter = SequentialAdapter(
+        [call("create_appointment", {"service_name": "Манікюр"}), text("На яку дату й час?")]
+    )
+    result = run(adapter)
+    err = result["tool_calls_history"][0]["result"]["error"]
+    assert "Missing" in err and "date" in err and "time" in err
+    assert result["needs_approval"] is False and result["proposed_booking"] is None
+    assert result["intent"] == "question"
+
+
+def test_run_agent_booking_unknown_service_not_proposed():
+    bad = {"service_name": "Татуювання", "date": "2026-12-01", "time": "10:00"}
+    result = run(SequentialAdapter([call("create_appointment", bad), text("Такої послуги немає")]))
+    assert "Невідома послуга" in result["tool_calls_history"][0]["result"]["error"]
+    assert result["needs_approval"] is False
+
+
+def test_run_agent_booking_at_iteration_limit_says_pending():
+    booking = {"service_name": "Манікюр", "date": "2026-12-01", "time": "10:00"}
+    result = run(SequentialAdapter([call("create_appointment", booking)]), max_iterations=1)
+    assert result["needs_approval"] is True and result["intent"] == "booking"
+    assert "підтвердження" in result["content"]
+
+
+class FailingAdapter(OllamaAdapter):
+    """Відповідає по черзі, а після відповідей — OllamaError."""
+
+    def __init__(self, responses=()):
+        self.responses = list(responses)
+        self.call_count = 0
+
+    async def chat(self, messages, tools=None):
+        self.call_count += 1
+        if self.responses:
+            return self.responses.pop(0)
+        raise OllamaError("Connection refused")
+
+
+def test_run_agent_ollama_error_fallback():
+    result = asyncio.run(run_agent([{"role": "user", "content": "hi"}], adapter=FailingAdapter()))
+    assert result["content"] == "Вибачте, тимчасово не можу відповісти. Передам менеджеру."
+    assert result["intent"] == "escalate"
+    assert result["needs_approval"] is False and result["proposed_booking"] is None
+    assert result["error"] == "Connection refused"
+    assert result["iterations"] == 1
+
+
+def test_run_agent_ollama_error_preserves_history():
+    bad = FailingAdapter([call("get_services")])
+    result = run(bad)
+    assert result["iterations"] == 2
+    assert len(result["tool_calls_history"]) == 1
+    assert result["tool_calls_history"][0]["name"] == "get_services"
+    assert result["intent"] == "escalate"
+    assert result["content"] == "Вибачте, тимчасово не можу відповісти. Передам менеджеру."
+
+
+def test_run_agent_ollama_error_drops_pending_booking():
+    booking = {"service_name": "Манікюр", "date": "2026-12-01", "time": "10:00"}
+    result = run(FailingAdapter([call("create_appointment", booking)]))
+    # клієнт не отримав підтвердження — пропозицію не показуємо на погодження
+    assert result["needs_approval"] is False and result["intent"] == "escalate"
+
+
+def test_run_agent_get_services_still_executes():
+    result = run(SequentialAdapter([call("get_services"), text("Ось послуги")]))
+    res = result["tool_calls_history"][0]["result"]
+    assert "services" in res and "pending_approval" not in res
+    assert result["needs_approval"] is False
 
 
 def test_run_agent_max_iterations_stops():
@@ -159,9 +254,9 @@ def test_run_agent_skips_malformed_tool_call():
     assert result["tool_calls_history"] == [] and result["content"] == "Добре"
 
 
-def test_run_agent_propagates_llm_error_and_works_with_mock():
-    with pytest.raises(OllamaError):
-        run(MockOllamaAdapter(delay=0), [{"role": "user", "content": "__FAIL__"}])
+def test_run_agent_llm_error_is_caught_and_works_with_mock():
+    failed = run(MockOllamaAdapter(delay=0), [{"role": "user", "content": "__FAIL__"}])
+    assert failed["intent"] == "escalate" and "mock_llm_failure" in failed["error"]
     ok = run(MockOllamaAdapter(delay=0))
     assert ok["content"].startswith("Тестова") and ok["intent"] == "question"
 
