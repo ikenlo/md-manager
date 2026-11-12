@@ -1,0 +1,756 @@
+From 2d25bce037b908947909b621621eb23a7c5c8930 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 5 Nov 2026 23:15:12 +0000
+Subject: [PATCH] =?UTF-8?q?=D0=A1=D0=BB=D1=83=D0=B6=D0=B1=D0=BE=D0=B2?=
+ =?UTF-8?q?=D0=B8=D0=B9=20API=20/api/ext/v1=20=D0=B4=D0=BB=D1=8F=20MDs=20m?=
+ =?UTF-8?q?anager:=20=D0=B7=D0=B0=D0=BF=D0=B8=D1=81=20=D0=B7=20=D0=B0?=
+ =?UTF-8?q?=D1=82=D1=80=D0=B8=D0=B1=D1=83=D1=86=D1=96=D1=94=D1=8E,=20?=
+ =?UTF-8?q?=D0=B2=D1=96=D0=B7=D0=B8=D1=82=D0=B8,=20=D1=80=D0=B5=D0=BA?=
+ =?UTF-8?q?=D0=BB=D0=B0=D0=BC=D0=B0?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Доступ лише з MDS_INTEGRATION_TOKEN (заголовок X-MDS-Integration-Token); без нього 404
+- Запис іде через create_appointment з actor роллю client (Actor.via): антиспам,
+  графік і захист від подвійних записів діють; source = telegram-ai / instagram
+- appointment_attribution: канал, мітка посилання, utm_*, campaign_id; ідемпотентність за external_ref
+- clients.instagram_user_id; clients.source заповнюється лише якщо порожній
+- /visits і /ad-spend — дані для окупності реклами (лише читання)
+- Міграція 0025, 10 тестів, docs/INTEGRATION.md
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_017iAGzRyTYV5HKzhwU3XYL9
+---
+ docs/API.md                                   |   5 +
+ docs/INTEGRATION.md                           |  42 ++++
+ server/mds/api/app.py                         |   4 +-
+ server/mds/api/routers/ext.py                 | 109 ++++++++++
+ server/mds/config.py                          |   1 +
+ server/mds/models.py                          |  18 ++
+ server/mds/services/antispam.py               |   2 +-
+ server/mds/services/bookings.py               |   4 +-
+ server/mds/services/common.py                 |   6 +
+ server/mds/services/integration.py            | 198 ++++++++++++++++++
+ .../versions/0025_ext_integration.py          |  45 ++++
+ server/tests/test_ext_api.py                  | 144 +++++++++++++
+ 12 files changed, 573 insertions(+), 5 deletions(-)
+ create mode 100644 docs/INTEGRATION.md
+ create mode 100644 server/mds/api/routers/ext.py
+ create mode 100644 server/mds/services/integration.py
+ create mode 100644 server/migrations/versions/0025_ext_integration.py
+ create mode 100644 server/tests/test_ext_api.py
+
+diff --git a/docs/API.md b/docs/API.md
+index ea82524..0224822 100644
+--- a/docs/API.md
++++ b/docs/API.md
+@@ -87,3 +87,8 @@
+ - `GET /api/sms/campaigns`, `POST /api/sms/campaigns?dry_run=1 {title, text, audience}` — розсилки
+   (dry_run — лише розрахунок отримувачів і вартості).
+ - `GET /api/sms/messages[?client_id]` (директор/адмін) — історія повідомлень; `POST /api/sms/test {phone}` — тестове SMS.
++
++
++## Службовий API для MDs manager — `/api/ext/v1`
++
++Доступ лише з заголовком `X-MDS-Integration-Token` (змінна `MDS_INTEGRATION_TOKEN`; без неї — 404). Опис і правила — [INTEGRATION.md](INTEGRATION.md).
+diff --git a/docs/INTEGRATION.md b/docs/INTEGRATION.md
+new file mode 100644
+index 0000000..51be01e
+--- /dev/null
++++ b/docs/INTEGRATION.md
+@@ -0,0 +1,42 @@
++# Інтеграція з MDs manager (AI-адміністратор і маркетинг)
++
++MDS Connect — **джерело правди** для записів, клієнтів, графіка й грошей.
++MDs manager (окремий сервіс, репозиторій `ikenlo/md-managment`) — AI-адміністратор у Telegram/Instagram
++і маркетинговий модуль. Він нічого не зберігає про записи сам: читає й пише їх тут, через `/api/ext/v1`.
++
++## Доступ
++
++- Вмикається змінною `MDS_INTEGRATION_TOKEN` (довгий випадковий рядок, `openssl rand -hex 32`).
++  Без неї всі `/api/ext/v1/*` відповідають 404.
++- Кожен запит — заголовок `X-MDS-Integration-Token: <токен>`. JWT персоналу тут не діє.
++- Той самий токен кладеться в MDs manager як `MDS_TOKEN`.
++
++## Що передає MDs manager → MDS
++
++| Метод | Шлях | Що робить |
++|---|---|---|
++| GET | `/api/ext/v1/catalog` | Активні послуги (ціни в копійках) і майстри |
++| GET | `/api/ext/v1/slots?service_id&date_from&date_to[&master_id]` | Вільний час для клієнтів (≤31 день) |
++| POST | `/api/ext/v1/appointments` | Запис від імені клієнта + атрибуція |
++| POST | `/api/ext/v1/appointments/lookup` | Майбутні записи клієнта (телефон / Telegram ID / Instagram ID) |
++| POST | `/api/ext/v1/appointments/{id}/cancel` | Скасування — лише власного запису клієнта |
++
++Запис іде через `bookings.create_appointment` з actor роллю `client` (`Actor.via(channel)`), тож діють
++антиспам, графік, мінімальний запас часу і захист від подвійних записів. `appointments.source` =
++`telegram-ai` або `instagram`. Повтор з тим самим `external_ref` повертає той самий запис (ідемпотентність).
++
++Атрибуція зберігається в `appointment_attribution`: `channel`, `lead_source` (мітка посилання, напр.
++`ig_reels_1201`), `utm_*`, `campaign_id`. Перше джерело клієнта (`clients.source`) заповнюється, лише якщо
++порожнє. Кожна зміна пише `audit`.
++
++## Що отримує MDs manager ← MDS (для окупності реклами)
++
++| Метод | Шлях | Що повертає |
++|---|---|---|
++| GET | `/api/ext/v1/visits?date_from&date_to` | Записи за датою візиту: статус (у т.ч. скасування й неявки), ціна, фактична оплата, частка салону, атрибуція |
++| GET | `/api/ext/v1/ad-spend?date_from&date_to` | Витрати категорії «Реклама» |
++
++## Не робимо
++
++- Персональних даних більше, ніж потрібно для запису (ім'я, телефон, ID месенджера).
++- Жодних змін грошей, замовлень, змін і виплат через інтеграцію — лише читання.
+diff --git a/server/mds/api/app.py b/server/mds/api/app.py
+index 411f3cc..4c60205 100644
+--- a/server/mds/api/app.py
++++ b/server/mds/api/app.py
+@@ -17,7 +17,7 @@ from ..config import Config
+ from ..db import Database
+ from ..errors import DomainError
+ from ..services import backup
+-from .routers import auth, calendar, card_terminal, callbacks, catalog, clients, money, sms, staff, stock_schedule, system, tax_report, taxes, utilities
++from .routers import auth, calendar, card_terminal, callbacks, catalog, clients, ext, money, sms, staff, stock_schedule, system, tax_report, taxes, utilities
+ 
+ log = logging.getLogger("mds")
+ STATIC = Path(__file__).resolve().parent.parent / "web" / "static"
+@@ -111,7 +111,7 @@ def create_app(
+             {"error": "validation", "detail": f"Невірні дані: {field} — {first.get('msg', '')}"}, status_code=422
+         )
+ 
+-    for r in (auth, card_terminal, staff, clients, catalog, calendar, callbacks, money, sms, stock_schedule, system, tax_report, taxes, utilities):
++    for r in (auth, card_terminal, staff, clients, catalog, calendar, callbacks, ext, money, sms, stock_schedule, system, tax_report, taxes, utilities):
+         app.include_router(r.router)
+ 
+     app.mount("/static", StaticFiles(directory=STATIC), name="static")
+diff --git a/server/mds/api/routers/ext.py b/server/mds/api/routers/ext.py
+new file mode 100644
+index 0000000..1516066
+--- /dev/null
++++ b/server/mds/api/routers/ext.py
+@@ -0,0 +1,109 @@
++"""/api/ext/v1 — службовий API для MDs manager. Доступ лише з ключем MDS_INTEGRATION_TOKEN."""
++from __future__ import annotations
++
++import hmac
++from datetime import date, datetime
++
++from fastapi import APIRouter, Depends, Header, Request
++from pydantic import Field
++from sqlalchemy.orm import Session
++
++from ...errors import AuthError, NotFound
++from ...services import integration
++from ..deps import get_session
++from ..schemas import BaseModel
++
++
++def require_integration(request: Request, x_mds_integration_token: str | None = Header(default=None)) -> None:
++    expected = request.app.state.config.integration_token
++    if not expected:
++        raise NotFound("Інтеграцію вимкнено")
++    if not x_mds_integration_token or not hmac.compare_digest(x_mds_integration_token, expected):
++        raise AuthError("Невірний ключ інтеграції")
++
++
++router = APIRouter(prefix="/api/ext/v1", tags=["integration"], dependencies=[Depends(require_integration)])
++
++
++class Attribution(BaseModel):
++    lead_source: str | None = Field(default=None, max_length=64)
++    utm_source: str | None = Field(default=None, max_length=64)
++    utm_medium: str | None = Field(default=None, max_length=64)
++    utm_campaign: str | None = Field(default=None, max_length=128)
++    utm_content: str | None = Field(default=None, max_length=128)
++    campaign_id: str | None = Field(default=None, max_length=64)
++
++
++class ClientIn(BaseModel):
++    name: str = Field(min_length=1, max_length=128)
++    phone: str = Field(min_length=5, max_length=32)
++    telegram_user_id: int | None = None
++    instagram_user_id: str | None = Field(default=None, max_length=64)
++
++
++class BookIn(BaseModel):
++    channel: str
++    service_id: int
++    master_id: int
++    starts_at: datetime
++    client: ClientIn
++    comment: str | None = Field(default=None, max_length=500)
++    external_ref: str | None = Field(default=None, max_length=64)
++    attribution: Attribution | None = None
++
++
++class Identity(BaseModel):
++    phone: str | None = None
++    telegram_user_id: int | None = None
++    instagram_user_id: str | None = None
++
++
++class CancelIn(Identity):
++    reason: str | None = Field(default=None, max_length=300)
++
++
++@router.get("/catalog")
++def get_catalog(s: Session = Depends(get_session)):
++    return integration.catalog(s)
++
++
++@router.get("/slots")
++def get_slots(service_id: int, date_from: date, date_to: date, master_id: int | None = None,
++              s: Session = Depends(get_session)):
++    return integration.slots(s, service_id, date_from, date_to, master_id)
++
++
++@router.post("/appointments")
++def book(body: BookIn, s: Session = Depends(get_session)):
++    a, created = integration.book(
++        s, channel=body.channel, service_id=body.service_id, master_id=body.master_id,
++        starts_at=body.starts_at.replace(tzinfo=None, second=0, microsecond=0),
++        client_name=body.client.name, client_phone=body.client.phone,
++        telegram_user_id=body.client.telegram_user_id, instagram_user_id=body.client.instagram_user_id,
++        comment=body.comment, external_ref=body.external_ref,
++        attribution=body.attribution.model_dump() if body.attribution else None,
++    )
++    return {**integration.appointment_public(a), "created": created}
++
++
++@router.post("/appointments/lookup")
++def lookup(body: Identity, s: Session = Depends(get_session)):
++    return integration.client_appointments(s, phone=body.phone, telegram_user_id=body.telegram_user_id,
++                                           instagram_user_id=body.instagram_user_id)
++
++
++@router.post("/appointments/{appt_id}/cancel")
++def cancel(appt_id: int, body: CancelIn, s: Session = Depends(get_session)):
++    a = integration.cancel(s, appt_id, phone=body.phone, telegram_user_id=body.telegram_user_id,
++                           instagram_user_id=body.instagram_user_id, reason=body.reason)
++    return integration.appointment_public(a)
++
++
++@router.get("/visits")
++def visits(date_from: date, date_to: date, s: Session = Depends(get_session)):
++    return integration.visits(s, date_from, date_to)
++
++
++@router.get("/ad-spend")
++def ad_spend(date_from: date, date_to: date, s: Session = Depends(get_session)):
++    return integration.ad_spend(s, date_from, date_to)
+diff --git a/server/mds/config.py b/server/mds/config.py
+index 31425c8..57ad1ac 100644
+--- a/server/mds/config.py
++++ b/server/mds/config.py
+@@ -20,6 +20,7 @@ class Config:
+     token_ttl_hours: int = field(default_factory=lambda: int(_env("TOKEN_TTL_HOURS", "12")))
+     timezone: str = field(default_factory=lambda: _env("TIMEZONE", "Europe/Kyiv"))
+     telegram_token: str = field(default_factory=lambda: _env("TELEGRAM_TOKEN", ""))
++    integration_token: str = field(default_factory=lambda: _env("INTEGRATION_TOKEN", ""))
+     backup_dir: Path | None = None
+     backup_interval_hours: int = field(default_factory=lambda: int(_env("BACKUP_INTERVAL_HOURS", "6")))
+     backup_keep: int = field(default_factory=lambda: int(_env("BACKUP_KEEP", "40")))
+diff --git a/server/mds/models.py b/server/mds/models.py
+index 953e407..74278ef 100644
+--- a/server/mds/models.py
++++ b/server/mds/models.py
+@@ -193,6 +193,7 @@ class Client(Base):
+     phone2: Mapped[str | None] = mapped_column(String(32))
+     birthday: Mapped[date | None] = mapped_column(Date)
+     telegram_username: Mapped[str | None] = mapped_column(String(64))
++    instagram_user_id: Mapped[str | None] = mapped_column(String(64), unique=True)
+     source: Mapped[str | None] = mapped_column(String(32))
+     wishes: Mapped[str | None] = mapped_column(Text)
+     marketing_consent: Mapped[bool] = mapped_column(Boolean, default=False, server_default="0")
+@@ -245,6 +246,23 @@ class Shift(Base):
+     orders: Mapped[list["Order"]] = relationship(back_populates="shift")
+ 
+ 
++class AppointmentAttribution(Base):
++    """Звідки прийшов запис: канал і рекламна мітка (заповнює MDs manager через /api/ext/v1)."""
++
++    __tablename__ = "appointment_attribution"
++
++    appointment_id: Mapped[int] = mapped_column(ForeignKey("appointments.id"), primary_key=True)
++    channel: Mapped[str] = mapped_column(String(16))
++    lead_source: Mapped[str | None] = mapped_column(String(64), index=True)
++    utm_source: Mapped[str | None] = mapped_column(String(64))
++    utm_medium: Mapped[str | None] = mapped_column(String(64))
++    utm_campaign: Mapped[str | None] = mapped_column(String(128))
++    utm_content: Mapped[str | None] = mapped_column(String(128))
++    campaign_id: Mapped[str | None] = mapped_column(String(64))
++    external_ref: Mapped[str | None] = mapped_column(String(64), unique=True)
++    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
++
++
+ class Order(Base):
+ 
+     __tablename__ = "orders"
+diff --git a/server/mds/services/antispam.py b/server/mds/services/antispam.py
+index 1cd4a16..ea467d7 100644
+--- a/server/mds/services/antispam.py
++++ b/server/mds/services/antispam.py
+@@ -11,7 +11,7 @@ from ..models import Appointment, ApptStatus, CallbackRequest, Client
+ from .common import get_setting
+ 
+ ACTIVE = (ApptStatus.PENDING, ApptStatus.CONFIRMED, ApptStatus.IN_PROGRESS)
+-ONLINE = ("telegram",)
++ONLINE = ("telegram", "telegram-ai", "instagram")
+ 
+ 
+ class TooMany(DomainError):
+diff --git a/server/mds/services/bookings.py b/server/mds/services/bookings.py
+index 32451d4..6dd0b42 100644
+--- a/server/mds/services/bookings.py
++++ b/server/mds/services/bookings.py
+@@ -253,7 +253,7 @@ def create_appointment(
+     if not service.is_active:
+         raise ValidationError("Послуга недоступна")
+     from_bot = actor.role == "client"
+-    source = "telegram" if from_bot else "staff"
++    source = (actor.channel or "telegram") if from_bot else "staff"
+     if from_bot and starts_at < clock.now():
+         raise ValidationError("Не можна записатися на минулий час")
+ 
+@@ -282,7 +282,7 @@ def create_appointment(
+ 
+     if status is None:
+         if from_bot:
+-            auto = get_setting(s, "telegram_auto_confirm") and source == "telegram" and not antispam.needs_confirmation(s, client)
++            auto = get_setting(s, "telegram_auto_confirm") and source in antispam.ONLINE and not antispam.needs_confirmation(s, client)
+             status = ApptStatus.CONFIRMED if auto else ApptStatus.PENDING
+         else:
+             status = ApptStatus.CONFIRMED
+diff --git a/server/mds/services/common.py b/server/mds/services/common.py
+index c38c29e..ed60dce 100644
+--- a/server/mds/services/common.py
++++ b/server/mds/services/common.py
+@@ -18,6 +18,7 @@ class Actor:
+     name: str
+     role: str
+     telegram_user_id: int | None = None
++    channel: str | None = None
+ 
+     @classmethod
+     def of(cls, user: User) -> "Actor":
+@@ -27,6 +28,11 @@ class Actor:
+     def telegram(cls, tg_user_id: int) -> "Actor":
+         return cls(None, f"telegram:{tg_user_id}", "client", tg_user_id)
+ 
++    @classmethod
++    def via(cls, channel: str, tg_user_id: int | None = None) -> "Actor":
++        """Клієнт, що записується через зовнішній канал (AI-помічник MDs manager)."""
++        return cls(None, f"{channel}:{tg_user_id or 'ext'}", "client", tg_user_id, channel)
++
+     @classmethod
+     def system(cls) -> "Actor":
+         return cls(None, "system", "system")
+diff --git a/server/mds/services/integration.py b/server/mds/services/integration.py
+new file mode 100644
+index 0000000..7658bb3
+--- /dev/null
++++ b/server/mds/services/integration.py
+@@ -0,0 +1,198 @@
++"""Службовий обмін даними з MDs manager (AI-адміністратор і маркетинг).
++
++MDS Connect — джерело правди для записів, клієнтів і грошей. MDs manager:
++читає каталог і вільний час, створює записи від імені клієнта (з усіма
++правилами антиспаму й графіка) і передає, звідки прийшов клієнт; назад
++отримує візити, неявки й виручку для розрахунку окупності реклами.
++"""
++from __future__ import annotations
++
++from datetime import date, datetime, timedelta
++
++from sqlalchemy import select
++from sqlalchemy.orm import Session
++
++from .. import clock
++from ..errors import NotFound, ValidationError
++from ..models import (
++    Appointment,
++    AppointmentAttribution,
++    ApptStatus,
++    Client,
++    Expense,
++    Order,
++    Service,
++)
++from . import bookings
++from .catalog import normalize_phone
++from .common import Actor, audit
++from .users import list_masters, masters_for_service
++
++CHANNELS = ("telegram-ai", "instagram")
++CLIENT_SOURCE = {"instagram": "instagram", "telegram-ai": "telegram-бот"}
++MAX_RANGE_DAYS = 31
++ATTR_FIELDS = ("lead_source", "utm_source", "utm_medium", "utm_campaign", "utm_content", "campaign_id")
++
++
++def _channel(channel: str) -> str:
++    if channel not in CHANNELS:
++        raise ValidationError(f"Невідомий канал: {channel}")
++    return channel
++
++
++def catalog(s: Session) -> dict:
++    services = s.scalars(select(Service).where(Service.is_active.is_(True)).order_by(Service.id)).all()
++    return {
++        "services": [
++            {
++                "id": x.id, "name": x.name, "section": x.section, "category": x.category,
++                "subcategory": x.subcategory, "duration_min": x.duration_min,
++                "price": x.price, "price_from": bool(x.price_from),
++                "master_ids": [m.id for m in masters_for_service(s, x.id)],
++            }
++            for x in services
++        ],
++        "masters": [{"id": m.id, "name": m.full_name} for m in list_masters(s)],
++    }
++
++
++def slots(s: Session, service_id: int, date_from: date, date_to: date, master_id: int | None = None) -> list[dict]:
++    if date_to < date_from or (date_to - date_from).days >= MAX_RANGE_DAYS:
++        raise ValidationError("Некоректний діапазон дат")
++    out = []
++    d = max(date_from, clock.now().date())
++    while d <= date_to:
++        if master_id:
++            found = {t: [master_id] for t in bookings.free_slots(s, master_id, service_id, d, for_client=True)}
++        else:
++            found = bookings.free_slots_any(s, service_id, d, for_client=True)
++        out.extend({"starts_at": t.isoformat(timespec="minutes"), "master_ids": ids} for t, ids in found.items())
++        d += timedelta(days=1)
++    return out
++
++
++def _attach_identity(s: Session, actor: Actor, client: Client, instagram_user_id: str | None, channel: str) -> None:
++    if instagram_user_id and client.instagram_user_id != instagram_user_id:
++        for other in s.scalars(select(Client).where(Client.instagram_user_id == instagram_user_id)):
++            other.instagram_user_id = None
++        before = client.instagram_user_id
++        client.instagram_user_id = instagram_user_id
++        audit(s, actor, "client", client.id, "link_instagram", {"instagram_user_id": before},
++              {"instagram_user_id": instagram_user_id})
++    if not client.source:
++        client.source = CLIENT_SOURCE[channel]
++
++
++def book(
++    s: Session,
++    *,
++    channel: str,
++    service_id: int,
++    master_id: int,
++    starts_at: datetime,
++    client_name: str,
++    client_phone: str,
++    telegram_user_id: int | None = None,
++    instagram_user_id: str | None = None,
++    comment: str | None = None,
++    external_ref: str | None = None,
++    attribution: dict | None = None,
++) -> tuple[Appointment, bool]:
++    """Запис від імені клієнта. Повертає (запис, створено_зараз). Повтор з тим самим external_ref — той самий запис."""
++    channel = _channel(channel)
++    if external_ref:
++        existing = s.scalar(select(AppointmentAttribution).where(AppointmentAttribution.external_ref == external_ref))
++        if existing:
++            return s.get(Appointment, existing.appointment_id), False
++    actor = Actor.via(channel, telegram_user_id)
++    a = bookings.create_appointment(
++        s, actor, master_id=master_id, service_id=service_id, starts_at=starts_at,
++        client_name=client_name, client_phone=client_phone, comment=comment,
++    )
++    _attach_identity(s, actor, a.client, instagram_user_id, channel)
++    attr = {k: (str(v)[:128] if v else None) for k, v in (attribution or {}).items() if k in ATTR_FIELDS}
++    s.add(AppointmentAttribution(appointment_id=a.id, channel=channel, external_ref=external_ref, **attr))
++    s.flush()
++    audit(s, actor, "appointment", a.id, "attribution", None, {"channel": channel, **attr})
++    return a, True
++
++
++def _find_client(s: Session, phone: str | None, telegram_user_id: int | None, instagram_user_id: str | None) -> Client | None:
++    if telegram_user_id:
++        c = s.scalar(select(Client).where(Client.telegram_user_id == telegram_user_id))
++        if c:
++            return c
++    if instagram_user_id:
++        c = s.scalar(select(Client).where(Client.instagram_user_id == instagram_user_id))
++        if c:
++            return c
++    if phone:
++        p = normalize_phone(phone)
++        return s.scalar(select(Client).where((Client.phone == p) | (Client.phone2 == p)))
++    return None
++
++
++def appointment_public(a: Appointment) -> dict:
++    return {
++        "id": a.id, "status": a.status, "starts_at": a.starts_at.isoformat(timespec="minutes"),
++        "ends_at": a.ends_at.isoformat(timespec="minutes"), "service_id": a.service_id,
++        "service_name": a.service.name, "master_id": a.master_id, "master_name": a.master.full_name,
++        "price": a.price, "source": a.source,
++    }
++
++
++def client_appointments(s: Session, *, phone: str | None = None, telegram_user_id: int | None = None,
++                        instagram_user_id: str | None = None) -> list[dict]:
++    c = _find_client(s, phone, telegram_user_id, instagram_user_id)
++    if c is None:
++        return []
++    rows = s.scalars(select(Appointment).where(
++        Appointment.client_id == c.id, Appointment.status.in_(ApptStatus.EDITABLE),
++        Appointment.starts_at >= clock.now()).order_by(Appointment.starts_at))
++    return [appointment_public(a) for a in rows]
++
++
++def cancel(s: Session, appt_id: int, *, phone: str | None = None, telegram_user_id: int | None = None,
++           instagram_user_id: str | None = None, reason: str | None = None) -> Appointment:
++    c = _find_client(s, phone, telegram_user_id, instagram_user_id)
++    a = s.get(Appointment, appt_id)
++    if c is None or a is None or a.client_id != c.id:
++        raise NotFound(f"Запис #{appt_id} не знайдено")
++    actor = Actor.system()
++    return bookings.set_status(s, actor, a.id, ApptStatus.CANCELLED,
++                               reason or "Скасовано клієнтом через AI-помічника", notify_client=False)
++
++
++def visits(s: Session, date_from: date, date_to: date) -> list[dict]:
++    """Записи з датою візиту в діапазоні: статус, план/факт виручки, джерело — для окупності реклами."""
++    if date_to < date_from or (date_to - date_from).days > 366:
++        raise ValidationError("Некоректний діапазон дат")
++    start = datetime.combine(date_from, datetime.min.time())
++    end = datetime.combine(date_to + timedelta(days=1), datetime.min.time())
++    rows = s.execute(
++        select(Appointment, Order, AppointmentAttribution, Client)
++        .join(Client, Client.id == Appointment.client_id)
++        .outerjoin(Order, Order.appointment_id == Appointment.id)
++        .outerjoin(AppointmentAttribution, AppointmentAttribution.appointment_id == Appointment.id)
++        .where(Appointment.starts_at >= start, Appointment.starts_at < end)
++        .order_by(Appointment.starts_at)
++    ).all()
++    out = []
++    for a, o, attr, c in rows:
++        out.append({
++            "appointment_id": a.id, "client_id": a.client_id, "client_source": c.source,
++            "starts_at": a.starts_at.isoformat(timespec="minutes"), "status": a.status, "source": a.source,
++            "service_id": a.service_id, "master_id": a.master_id, "price": a.price,
++            "paid_amount": o.amount if o else None, "salon_earning": o.salon_earning if o else None,
++            "attribution": {"channel": attr.channel, **{k: getattr(attr, k) for k in ATTR_FIELDS}} if attr else None,
++            "created_at": a.created_at.isoformat(timespec="minutes"),
++        })
++    return out
++
++
++def ad_spend(s: Session, date_from: date, date_to: date) -> dict:
++    rows = s.scalars(select(Expense).where(
++        Expense.category == "advertising", Expense.is_deleted.is_(False),
++        Expense.spent_on >= date_from, Expense.spent_on <= date_to).order_by(Expense.spent_on))
++    items = [{"spent_on": e.spent_on.isoformat(), "amount": e.amount, "description": e.description} for e in rows]
++    return {"total": sum(x["amount"] for x in items), "items": items}
+diff --git a/server/migrations/versions/0025_ext_integration.py b/server/migrations/versions/0025_ext_integration.py
+new file mode 100644
+index 0000000..4ec2caf
+--- /dev/null
++++ b/server/migrations/versions/0025_ext_integration.py
+@@ -0,0 +1,45 @@
++"""інтеграція з MDs manager: Instagram ID клієнта, атрибуція записів
++
++Revision ID: 0025
++Revises: 0024
++Create Date: 2026-11-05 22:00:00
++"""
++import sqlalchemy as sa
++from alembic import op
++
++
++revision = '0025'
++down_revision = '0024'
++branch_labels = None
++depends_on = None
++
++
++def upgrade() -> None:
++    with op.batch_alter_table('clients') as b:
++        b.add_column(sa.Column('instagram_user_id', sa.String(length=64), nullable=True))
++        b.create_unique_constraint('uq_clients_instagram_user_id', ['instagram_user_id'])
++    op.create_table(
++        'appointment_attribution',
++        sa.Column('appointment_id', sa.Integer(), nullable=False),
++        sa.Column('channel', sa.String(length=16), nullable=False),
++        sa.Column('lead_source', sa.String(length=64), nullable=True),
++        sa.Column('utm_source', sa.String(length=64), nullable=True),
++        sa.Column('utm_medium', sa.String(length=64), nullable=True),
++        sa.Column('utm_campaign', sa.String(length=128), nullable=True),
++        sa.Column('utm_content', sa.String(length=128), nullable=True),
++        sa.Column('campaign_id', sa.String(length=64), nullable=True),
++        sa.Column('external_ref', sa.String(length=64), nullable=True),
++        sa.Column('created_at', sa.DateTime(), nullable=False),
++        sa.ForeignKeyConstraint(['appointment_id'], ['appointments.id']),
++        sa.PrimaryKeyConstraint('appointment_id'),
++        sa.UniqueConstraint('external_ref'),
++    )
++    op.create_index('ix_appointment_attribution_lead_source', 'appointment_attribution', ['lead_source'])
++
++
++def downgrade() -> None:
++    op.drop_index('ix_appointment_attribution_lead_source', table_name='appointment_attribution')
++    op.drop_table('appointment_attribution')
++    with op.batch_alter_table('clients') as b:
++        b.drop_constraint('uq_clients_instagram_user_id', type_='unique')
++        b.drop_column('instagram_user_id')
+diff --git a/server/tests/test_ext_api.py b/server/tests/test_ext_api.py
+new file mode 100644
+index 0000000..fb74eea
+--- /dev/null
++++ b/server/tests/test_ext_api.py
+@@ -0,0 +1,144 @@
++"""Службовий API /api/ext/v1 для MDs manager: ключ, каталог, слоти, запис з атрибуцією, візити, реклама."""
++from __future__ import annotations
++
++from datetime import date, datetime
++
++import pytest
++from fastapi.testclient import TestClient
++
++from mds.models import Appointment, AppointmentAttribution, AuditLog, Client, Expense
++from mds.services import integration, orders
++from mds.services.common import Actor
++
++TOKEN = "integration-test-token-0123456789"
++H = {"X-MDS-Integration-Token": TOKEN}
++
++
++@pytest.fixture
++def ext(db, seed, tmp_path):
++    from mds.api.app import create_app
++    from mds.config import Config
++
++    cfg = Config(data_dir=tmp_path / "data", database_url=db.url, secret_key="test-secret-key-for-unit-tests-only-0123456789",
++                 integration_token=TOKEN)
++    with TestClient(create_app(cfg, db)) as c:
++        yield c, seed
++
++
++def _book(c, ids, **kw):
++    body = {
++        "channel": "instagram", "service_id": ids["haircut"], "master_id": ids["m1"], "starts_at": "2026-11-02T12:00",
++        "client": {"name": "Олена", "phone": "0671234567", "instagram_user_id": "ig-1"},
++        "external_ref": "conv-1-msg-5",
++        "attribution": {"lead_source": "ig_reels_1201", "utm_source": "instagram", "utm_campaign": "nov_haircut"},
++    }
++    body.update(kw)
++    return c.post("/api/ext/v1/appointments", headers=H, json=body)
++
++
++def test_requires_token(ext):
++    c, _ = ext
++    assert c.get("/api/ext/v1/catalog").status_code == 401
++    assert c.get("/api/ext/v1/catalog", headers={"X-MDS-Integration-Token": "wrong"}).status_code == 401
++    assert c.get("/api/ext/v1/catalog", headers=H).status_code == 200
++
++
++def test_disabled_without_configured_token(client_api):
++    c, _, _ = client_api
++    assert c.get("/api/ext/v1/catalog", headers=H).status_code == 404
++
++
++def test_staff_jwt_does_not_open_ext(client_api):
++    c, _, auth = client_api
++    assert c.get("/api/ext/v1/catalog", headers=auth).status_code == 404
++
++
++def test_catalog_and_slots(ext):
++    c, ids = ext
++    cat = c.get("/api/ext/v1/catalog", headers=H).json()
++    haircut = next(x for x in cat["services"] if x["id"] == ids["haircut"])
++    assert haircut["price"] == 50000 and haircut["duration_min"] == 60
++    assert set(haircut["master_ids"]) >= {ids["m1"], ids["m2"]}
++    slots = c.get("/api/ext/v1/slots", headers=H, params={"service_id": ids["haircut"], "date_from": "2026-11-02",
++                                                          "date_to": "2026-11-02"}).json()
++    times = [x["starts_at"] for x in slots]
++    assert "2026-11-02T08:00" not in times  # мінімальний запас часу для клієнтів
++    assert "2026-11-02T12:00" in times
++    assert c.get("/api/ext/v1/slots", headers=H, params={"service_id": ids["haircut"], "date_from": "2026-11-02",
++                                                         "date_to": "2026-12-30"}).status_code == 422
++
++
++def test_book_with_attribution_and_idempotency(ext):
++    c, ids = ext
++    r = _book(c, ids)
++    assert r.status_code == 200, r.text
++    a = r.json()
++    assert a["created"] is True and a["source"] == "instagram" and a["status"] in ("pending", "confirmed")
++    again = _book(c, ids).json()
++    assert again["id"] == a["id"] and again["created"] is False
++    with c.app.state.db.session() as s:
++        attr = s.get(AppointmentAttribution, a["id"])
++        assert (attr.channel, attr.lead_source, attr.utm_campaign) == ("instagram", "ig_reels_1201", "nov_haircut")
++        cl = s.get(Appointment, a["id"]).client
++        assert cl.instagram_user_id == "ig-1" and cl.source == "instagram" and cl.phone == "+380671234567"
++        assert s.query(AuditLog).filter_by(entity="appointment", entity_id=a["id"], action="attribution").count() == 1
++
++
++def test_book_respects_slot_and_antispam(ext):
++    c, ids = ext
++    assert _book(c, ids).status_code == 200
++    r = _book(c, ids, external_ref="other", client={"name": "Ірина", "phone": "0931112233"})
++    assert r.status_code == 409 and r.json()["error"] == "slot_taken"
++    assert _book(c, ids, channel="sms", external_ref="x3").status_code == 422
++    r = _book(c, ids, starts_at="2026-11-01T12:00", external_ref="past")
++    assert r.status_code == 422
++
++
++def test_existing_client_keeps_first_source(ext):
++    c, ids = ext
++    with c.app.state.db.session() as s:
++        s.add(Client(name="Олена", phone="+380671234567", source="рекомендація"))
++    _book(c, ids)
++    with c.app.state.db.session() as s:
++        cl = s.query(Client).filter_by(phone="+380671234567").one()
++        assert cl.source == "рекомендація" and cl.instagram_user_id == "ig-1"
++
++
++def test_lookup_and_cancel_only_own(ext):
++    c, ids = ext
++    a = _book(c, ids).json()
++    mine = c.post("/api/ext/v1/appointments/lookup", headers=H, json={"instagram_user_id": "ig-1"}).json()
++    assert [x["id"] for x in mine] == [a["id"]]
++    assert c.post("/api/ext/v1/appointments/lookup", headers=H, json={"phone": "0999999999"}).json() == []
++    r = c.post(f"/api/ext/v1/appointments/{a['id']}/cancel", headers=H, json={"phone": "0999999999"})
++    assert r.status_code == 404
++    r = c.post(f"/api/ext/v1/appointments/{a['id']}/cancel", headers=H, json={"telegram_user_id": None, "phone": "0671234567"})
++    assert r.status_code == 200 and r.json()["status"] == "cancelled"
++
++
++def test_visits_and_ad_spend(ext, db):
++    c, ids = ext
++    a = _book(c, ids).json()
++    with db.session() as s:
++        d = Actor.of(s.get(__import__("mds.models", fromlist=["User"]).User, ids["director"]))
++        appt = s.get(Appointment, a["id"])
++        appt.status = "confirmed"
++        orders.close_order(s, d, a["id"], amount=55000, payment_method="cash", materials=[])
++        s.add(Expense(category="advertising", amount=120000, spent_on=date(2026, 11, 1), description="Meta Ads",
++                      created_by=ids["director"]))
++        s.add(Expense(category="rent", amount=999999, spent_on=date(2026, 11, 1), created_by=ids["director"]))
++    v = c.get("/api/ext/v1/visits", headers=H, params={"date_from": "2026-11-02", "date_to": "2026-11-02"}).json()
++    assert len(v) == 1
++    assert v[0]["paid_amount"] == 55000 and v[0]["status"] == "completed"
++    assert v[0]["attribution"]["lead_source"] == "ig_reels_1201"
++    spend = c.get("/api/ext/v1/ad-spend", headers=H, params={"date_from": "2026-11-01", "date_to": "2026-11-30"}).json()
++    assert spend["total"] == 120000 and len(spend["items"]) == 1
++
++
++def test_service_layer_book_telegram_ai(db, seed):
++    with db.session() as s:
++        a, created = integration.book(s, channel="telegram-ai", service_id=seed["haircut"], master_id=seed["m2"],
++                                      starts_at=datetime(2026, 11, 2, 14), client_name="Дарина", client_phone="0501112233",
++                                      telegram_user_id=777)
++        assert created and a.source == "telegram-ai" and a.client.telegram_user_id == 777
++        assert a.client.source == "telegram-бот"
+-- 
+2.43.0
+

@@ -1,0 +1,44 @@
+[project]
+name = "mds-manager"
+version = "0.2.0"
+description = "AI-адміністратор салону M&D: Instagram Direct + Telegram, запис, нагадування"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "aiogram>=3.13",
+    "anthropic>=0.40",
+    "sqlalchemy>=2.0.35",
+    "alembic>=1.13",
+    "apscheduler>=3.10,<4",
+    "pydantic-settings>=2.5",
+    "pyyaml>=6",
+    "httpx>=0.27",
+    "python-multipart>=0.0.9",
+    "pillow>=10.4",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "pytest-asyncio>=0.24", "ruff>=0.6", "pre-commit>=3.7"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]
+
+[tool.ruff.lint.per-file-ignores]
+"app/panel.py" = ["E501"]  # HTML/CSS-шаблон

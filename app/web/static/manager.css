@@ -1,0 +1,33 @@
+/* Доповнення до style.css з MDS Connect — лише компоненти MDS Manager. */
+.nav a.soon { opacity: .45; pointer-events: none; }
+.nav a .soon-tag { margin-left: auto; font-size: var(--fs-2xs); letter-spacing: .06em; text-transform: uppercase; opacity: .8; }
+.nav a .cnt { margin-left: auto; background: var(--danger); color: #fff; border-radius: var(--r-pill); font-size: var(--fs-2xs); padding: 1px 7px; font-weight: 700; }
+.muted-note { font-size: var(--fs-sm); color: var(--ink-3); margin: 6px 0 0; }
+.delta.inv.up { color: var(--danger); } .delta.inv.down { color: var(--ok); }
+.photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+.photo { min-width: 0; }
+.photo img, .pic img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: var(--r-md); display: block; background: var(--surface-3); }
+.photo .cap, .pic .cap { font-size: var(--fs-xs); color: var(--ink-3); margin-top: 4px; }
+.pics { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.pic.wait { display: grid; place-items: center; text-align: center; border-radius: var(--r-md); background: var(--gold-tint); color: var(--ink-2); font-size: var(--fs-sm); aspect-ratio: 4 / 5; padding: 12px; }
+.post-card h3.topic { font: 600 22px/1.2 var(--serif); margin: 10px 0 4px; }
+.text-box { white-space: pre-wrap; word-break: break-word; background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-md); padding: 10px 12px; margin: 6px 0 0; }
+.row-between { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.items-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); align-items: start; }
+.inline-form { display: flex; gap: 8px; margin-top: 8px; }
+.inline-form input, .inline-form select { flex: 1; min-width: 0; }
+.chip.k-post { background: var(--prog-bg); color: var(--prog); }
+.chip.k-story { background: var(--gold-tint); color: var(--gold); }
+.chip.s-idea { background: var(--warn-bg); color: var(--warn); }
+.chip.s-approved { background: var(--info-bg); color: var(--info); }
+.chip.s-ready { background: var(--ok-bg); color: var(--ok); }
+.chip.s-published { background: var(--muted-bg); color: var(--ink-3); }
+.hl-list { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+.act { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+.act:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+.pri { font-size: var(--fs-2xs); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.pri.high { color: var(--danger); } .pri.medium { color: var(--warn); } .pri.low { color: var(--ink-3); }
+.soon-card { text-align: center; padding: 40px 20px; color: var(--ink-3); }
+.soon-card h2 { color: var(--ink); }
+.journal td { white-space: normal; }
+input[type=file].hidden-file { position: absolute; width: 1px; height: 1px; opacity: 0; }
