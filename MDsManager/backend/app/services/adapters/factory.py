@@ -19,8 +19,6 @@ def get_ollama_adapter() -> OllamaAdapter:
         from app.services.adapters.ollama_mock import MockOllamaAdapter
 
         return MockOllamaAdapter()
-    try:
-        from app.services.adapters.ollama_real import RealOllamaAdapter
-    except ImportError as e:  # з'явиться в 3.1.2
-        raise NotImplementedError("RealOllamaAdapter ще не реалізовано (Phase 3.1.2)") from e
+    from app.services.adapters.ollama_real import RealOllamaAdapter
+
     return RealOllamaAdapter()
