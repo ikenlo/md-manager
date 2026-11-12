@@ -48,6 +48,15 @@ class Settings(BaseSettings):
     # Вкладення з Meta зберігаються локально (лише прямі слеші)
     media_dir: str = Field(DEFAULT_MEDIA_DIR, alias="MEDIA_DIR")
 
+    # AI: локальна LLM через Ollama (Фаза 3). MOCK_OLLAMA=true — без звернень до Ollama
+    ollama_enabled: bool = Field(True, alias="OLLAMA_ENABLED")
+    mock_ollama: bool = Field(True, alias="MOCK_OLLAMA")
+    ollama_host: str = Field("http://localhost:11434", alias="OLLAMA_HOST")
+    ollama_model: str = Field("qwen3:14b", alias="OLLAMA_MODEL")
+    ollama_timeout_seconds: int = Field(120, ge=1, alias="OLLAMA_TIMEOUT_SECONDS")
+    ollama_temperature: float = Field(0.7, ge=0, le=2, alias="OLLAMA_TEMPERATURE")
+    ollama_num_ctx: int = Field(8192, ge=512, alias="OLLAMA_NUM_CTX")
+
     @property
     def is_production(self) -> bool:
         return self.app_env == "production"
