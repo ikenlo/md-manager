@@ -23,6 +23,8 @@ import {
   type SheetProps,
   type TableColumn,
 } from '../components/ui';
+import { AISuggestionPanel } from '../components/AISuggestionPanel';
+import type { AISuggestion } from '../types';
 
 const VARIANTS: ButtonVariant[] = ['primary', 'secondary', 'ghost', 'danger'];
 const SIZES: ButtonSize[] = ['sm', 'md', 'lg'];
@@ -91,6 +93,59 @@ function Section({ title, hint, children }: { title: string; hint?: string; chil
 
 function Label({ children }: { children: ReactNode }) {
   return <div className="mb-2 text-2xs font-bold uppercase tracking-wider text-ink-3">{children}</div>;
+}
+
+const AI_DEMO: AISuggestion[] = [
+  {
+    uuid: 'demo-ai-booking',
+    dialogue_uuid: 'demo',
+    content: 'Хвилинку, уточнюю деталі.',
+    intent: 'booking',
+    proposed_booking: {
+      tool: 'create_appointment',
+      service_name: 'Манікюр',
+      date: '2026-12-01',
+      time: '10:00',
+      arguments: { service_name: 'Манікюр', date: '2026-12-01', time: '10:00' },
+    },
+    status: 'pending',
+    created_at: '2026-11-12T10:00:00Z',
+    // як повертає сервер (build_confirmation_text): для запису — готове підтвердження
+    suggested_message: 'Вас записано на Манікюр 01.12.2026 о 10:00. Чекаємо вас! 😊',
+  },
+  {
+    uuid: 'demo-ai-question',
+    dialogue_uuid: 'demo',
+    content: 'Манікюр з покриттям коштує 350 грн і триває близько години 😊',
+    intent: 'question',
+    proposed_booking: null,
+    status: 'pending',
+    created_at: '2026-11-12T10:05:00Z',
+    suggested_message: 'Манікюр з покриттям коштує 350 грн і триває близько години 😊',
+  },
+];
+
+function AIPanelDemo({ suggestion }: { suggestion: AISuggestion }) {
+  const [busy, setBusy] = useState<'approve' | 'reject' | 'regen' | null>(null);
+  const run = (kind: 'approve' | 'reject' | 'regen', msg: string) => {
+    setBusy(kind);
+    setTimeout(() => {
+      setBusy(null);
+      toast.success(msg);
+    }, 900);
+  };
+  return (
+    <AISuggestionPanel
+      suggestion={suggestion}
+      isApproving={busy === 'approve'}
+      isRejecting={busy === 'reject'}
+      isRegenerating={busy === 'regen'}
+      onApprove={(t) => run('approve', `Схвалено: «${t.slice(0, 40)}${t.length > 40 ? '…' : ''}»`)}
+      onReject={() => run('reject', 'Відхилено')}
+      onRegenerate={() => run('regen', 'Нова чернетка готова')}
+      onClose={() => toast.info('Панель сховано')}
+    />
+  );
 }
 
 type SheetDemo = { side: SheetProps['side']; width?: number; title: string };
@@ -289,6 +344,14 @@ export default function DemoPage() {
             onRowClick={(r) => toast.info(`Відкрити: ${r.client}`)}
           />
           <Table className="mt-4" columns={COLUMNS} data={[]} emptyText="Немає записів за період" />
+        </Section>
+
+        <Section title="AI suggestion panel" hint="Запис (текст — підтвердження для клієнта) і питання (текст AI)">
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {AI_DEMO.map((s) => (
+              <AIPanelDemo key={s.uuid} suggestion={s} />
+            ))}
+          </div>
         </Section>
 
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">

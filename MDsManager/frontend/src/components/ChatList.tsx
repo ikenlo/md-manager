@@ -1,7 +1,8 @@
-import { LogOut, MessageCircle, Search } from 'lucide-react';
+import { Bot, LogOut, MessageCircle, Search } from 'lucide-react';
 import { useMemo } from 'react';
 import { listTime } from '../lib/format';
 import { logout } from '../lib/session';
+import { useAIStore } from '../store/ai';
 import { STATUS_LABEL, useInboxStore, type InboxFilter } from '../store/inbox';
 import type { ChannelType, Dialogue } from '../types';
 import ChannelIcon, { channelLabel } from './ChannelIcon';
@@ -31,6 +32,7 @@ export default function ChatList({ className }: { className?: string }) {
   const filter = useInboxStore((s) => s.filter);
   const search = useInboxStore((s) => s.search);
   const isLoading = useInboxStore((s) => s.isLoading);
+  const pendingAI = useAIStore((s) => s.pendingByDialogue);
   const loadError = useInboxStore((s) => s.loadError);
   const { selectDialogue, setFilter, setSearch } = useInboxStore.getState();
 
@@ -174,6 +176,16 @@ export default function ChatList({ className }: { className?: string }) {
                       <Chip variant={d.status} size="sm" dot>
                         {STATUS_LABEL[d.status]}
                       </Chip>
+                      {pendingAI[d.uuid] && (
+                        <span
+                          title="Є пропозиція AI — чекає схвалення"
+                          aria-label="Є пропозиція AI"
+                          className="inline-flex items-center gap-1 rounded-md border border-gold-soft/50 bg-gold-tint px-1.5 py-0.5"
+                        >
+                          <Bot size={12} className="text-gold" aria-hidden="true" />
+                          <span className="text-[10px] font-semibold leading-none text-gold">AI</span>
+                        </span>
+                      )}
                       {!d.ai_active && (
                         <Chip variant="new" size="sm">
                           Людина

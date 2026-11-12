@@ -14,16 +14,21 @@ import {
   Send,
   Sparkles,
   User,
+  UserRound,
   WifiOff,
   X,
 } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { aiReject } from '../api/ai';
+import { AI_MODES, getAIMode, setAIMode, type AIMode } from '../lib/ai_mode';
 import { dayLabel, msgTime } from '../lib/format';
+import { useAIStore } from '../store/ai';
 import { STATUS_LABEL, useInboxStore } from '../store/inbox';
 import type { Attachment, Dialogue, Message, MessageStatus } from '../types';
+import { AISuggestionPanel } from './AISuggestionPanel';
 import ChannelIcon, { channelLabel } from './ChannelIcon';
 import { CHANNEL_RING } from './ChatList';
-import { Avatar, Button, Chip, Divider, Input, Skeleton, cn, toast } from './ui';
+import { Avatar, Badge, Button, Chip, Divider, Input, Skeleton, cn, toast } from './ui';
 
 const WINDOW_MS = 24 * 60 * 60 * 1000;
 
@@ -160,11 +165,60 @@ function lastInboundAt(d: Dialogue, list: Message[]): string | null {
 
 const soon = (what: string) => () => toast.info(`${what} — буде у Фазі 2`);
 
+const MODE_META: Record<AIMode, { label: string; title: string; Icon: typeof Bot }> = {
+  auto: { label: 'AI авто', title: 'AI генерує пропозиції автоматично', Icon: Sparkles },
+  manual: { label: 'Вручну', title: 'AI запускається кнопкою', Icon: Bot },
+  human: { label: 'Людина', title: 'AI вимкнено для цього діалогу', Icon: UserRound },
+};
+
+function AIModeToggle({
+  mode,
+  onChange,
+  className,
+}: {
+  mode: AIMode;
+  onChange: (m: AIMode) => void;
+  className?: string;
+}) {
+  return (
+    <div role="radiogroup" aria-label="Режим AI" className={cn('inline-flex rounded-md bg-surface-3 p-0.5', className)}>
+      {AI_MODES.map((m) => {
+        const { label, title, Icon } = MODE_META[m];
+        const on = m === mode;
+        return (
+          <button
+            key={m}
+            type="button"
+            role="radio"
+            aria-checked={on}
+            title={title}
+            onClick={() => onChange(m)}
+            className={cn(
+              'inline-flex h-7 items-center gap-1 whitespace-nowrap rounded-sm px-2 text-xs font-semibold transition duration-1',
+              'focus-visible:outline-none focus-visible:shadow-ring',
+              on ? 'bg-brand text-brand-ink shadow-sm' : 'text-ink-2 hover:bg-line/50',
+            )}
+          >
+            <Icon size={12} aria-hidden="true" />
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 export default function ActiveChat({ className }: { className?: string }) {
   const activeUuid = useInboxStore((s) => s.activeDialogueUuid);
   const d = useInboxStore((s) => s.dialogues.find((x) => x.uuid === s.activeDialogueUuid));
   const list = useInboxStore((s) => (s.activeDialogueUuid ? s.messagesByDialogue[s.activeDialogueUuid] : undefined));
-  const { sendMessage, selectDialogue, toggleAi } = useInboxStore.getState();
+  const { sendMessage, selectDialogue } = useInboxStore.getState();
+  const source = useInboxStore((s) => s.source);
+  const pending = useAIStore((s) => (activeUuid ? s.pendingByDialogue[activeUuid] : undefined));
+  const responding = useAIStore((s) => (activeUuid ? Boolean(s.responding[activeUuid]) : false));
+  const isApproving = useAIStore((s) => (pending ? Boolean(s.approving[pending.uuid]) : false));
+  const isRejecting = useAIStore((s) => (pending ? Boolean(s.rejecting[pending.uuid]) : false));
+  const [mode, setMode] = useState<AIMode>('manual');
   const messages = useMemo(() => list ?? [], [list]);
   const loading = list === undefined;
 
@@ -175,9 +229,30 @@ export default function ActiveChat({ className }: { className?: string }) {
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ block: 'end' });
-  }, [activeUuid, messages.length]);
+    // responding — щоб бульбашка «AI аналізує» була в полі зору
+  }, [activeUuid, messages.length, responding]);
 
   useEffect(() => setText(''), [activeUuid]);
+
+  // Режим AI — свій для кожного діалогу; без збереженого — з ai_active від сервера
+  useEffect(() => {
+    if (!activeUuid) return;
+    const fromServer = useInboxStore.getState().dialogues.find((x) => x.uuid === activeUuid)?.ai_active;
+    const m = getAIMode(activeUuid, fromServer === false ? 'human' : 'manual');
+    setMode(m);
+    // збережений режим важливіший за ai_active з сервера — чип «Людина» у списку має збігатися
+    if (fromServer !== undefined && fromServer !== (m !== 'human')) {
+      useInboxStore.setState((st) => ({
+        dialogues: st.dialogues.map((x) => (x.uuid === activeUuid ? { ...x, ai_active: m !== 'human' } : x)),
+      }));
+    }
+  }, [activeUuid]);
+
+  // Пропозиція AI, що чекає рішення (демо-режим без сервера — пропускаємо)
+  useEffect(() => {
+    if (!activeUuid || source !== 'api') return;
+    void useAIStore.getState().fetchPending(activeUuid);
+  }, [activeUuid, source]);
 
   if (!d) {
     return (
@@ -189,6 +264,17 @@ export default function ActiveChat({ className }: { className?: string }) {
       </main>
     );
   }
+
+  const changeMode = (m: AIMode) => {
+    setMode(m);
+    setAIMode(d.uuid, m);
+    // список діалогів показує чип «Людина» за ai_active — тримаємо їх узгодженими
+    useInboxStore.setState((st) => ({
+      dialogues: st.dialogues.map((x) => (x.uuid === d.uuid ? { ...x, ai_active: m !== 'human' } : x)),
+    }));
+  };
+  const hasPending = Boolean(pending);
+  const canRunAI = mode !== 'human' && !hasPending && !responding;
 
   const inboundAt = lastInboundAt(d, messages);
   const windowClosed = inboundAt !== null && Date.now() - Date.parse(inboundAt) > WINDOW_MS;
@@ -205,6 +291,11 @@ export default function ActiveChat({ className }: { className?: string }) {
     if (!ok) {
       setText(value); // повертаємо текст, щоб не загубився
       toast.error('Не вдалося надіслати. Спробуйте ще раз');
+    } else if (pending) {
+      // відповіли вручну — пропозиція AI застаріла: прибираємо тут і відхиляємо на сервері,
+      // інакше після перезавантаження вона повернулась би «привидом»
+      useAIStore.getState().clearPending(d.uuid);
+      aiReject(d.uuid, pending.uuid, 'manual reply').catch(() => undefined);
     }
     inputRef.current?.focus();
   };
@@ -247,17 +338,10 @@ export default function ActiveChat({ className }: { className?: string }) {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          <Button
-            variant="secondary"
-            size="sm"
-            onClick={() => toggleAi(d.uuid)}
-            aria-pressed={d.ai_active}
-            title={d.ai_active ? 'AI відповідає клієнту. Натисніть, щоб вести самому' : 'Веде людина. Натисніть, щоб передати AI'}
-            iconLeft={d.ai_active ? <Bot size={14} /> : <Hand size={14} />}
-            className={cn('mr-1', d.ai_active && 'border-gold-soft bg-gold-tint text-gold hover:bg-gold-tint')}
-          >
-            <span className="hidden lg:inline">{d.ai_active ? 'AI веде' : 'Веде людина'}</span>
-          </Button>
+          <div className="mr-1 hidden items-center gap-1.5 sm:flex">
+            <AIModeToggle mode={mode} onChange={changeMode} />
+            <Badge count={hasPending ? 1 : 0} variant="danger" aria-label="Є пропозиція AI" title="Є пропозиція AI" />
+          </div>
           <Button variant="ghost" size="sm" aria-label="Записати" title="Записати" className="px-2" onClick={soon('Запис')}>
             <CalendarPlus size={18} />
           </Button>
@@ -289,6 +373,27 @@ export default function ActiveChat({ className }: { className?: string }) {
               </Fragment>
             );
           })}
+          {responding && (
+            <div role="status" aria-label="AI аналізує розмову" className="flex items-end justify-end gap-2">
+              <div className="rounded-2xl rounded-br-none bg-brand px-4 py-2.5 text-brand-ink shadow-sm">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-sm">AI аналізує</span>
+                  <span className="flex gap-1" aria-hidden="true">
+                    {[0, 150, 300].map((delay) => (
+                      <span
+                        key={delay}
+                        className="h-1.5 w-1.5 animate-bounce rounded-full bg-brand-ink/60 motion-reduce:animate-none"
+                        style={{ animationDelay: `${delay}ms` }}
+                      />
+                    ))}
+                  </span>
+                </div>
+              </div>
+              <span className="mb-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full border border-gold/30 bg-brand-2 shadow-sm">
+                <Bot size={16} className="text-gold" aria-hidden="true" />
+              </span>
+            </div>
+          )}
           <div ref={endRef} />
         </div>
       </div>
@@ -317,14 +422,55 @@ export default function ActiveChat({ className }: { className?: string }) {
         </div>
       )}
 
+      {pending && (
+        <div className="max-h-[55vh] shrink-0 overflow-y-auto border-t border-line bg-bg px-3 py-3 sm:px-5">
+          <AISuggestionPanel
+            suggestion={pending}
+            isApproving={isApproving}
+            isRejecting={isRejecting}
+            isRegenerating={responding}
+            onApprove={async (messageText) => {
+              // успіх: стор прибирає pending, повідомлення приходить через WebSocket (new_message)
+              await useAIStore.getState().approve(d.uuid, pending.uuid, messageText);
+            }}
+            onReject={async () => {
+              await useAIStore.getState().reject(d.uuid, pending.uuid);
+            }}
+            onRegenerate={async () => {
+              await useAIStore.getState().respond(d.uuid);
+            }}
+            onClose={() => useAIStore.getState().clearPending(d.uuid)}
+          />
+        </div>
+      )}
+
       <footer className="shrink-0 border-t border-line bg-surface px-3 pb-[calc(12px+env(safe-area-inset-bottom))] pt-3 sm:p-5">
+        <div className="mb-2 flex min-h-8 flex-wrap items-center gap-2 text-xs text-ink-3">
+          {/* на телефоні в шапці немає місця — перемикач тут */}
+          <AIModeToggle mode={mode} onChange={changeMode} className="sm:hidden" />
+          {/* очікування AI показує бульбашка «AI аналізує» в чаті (або кнопка панелі) */}
+          {hasPending || responding ? null : mode !== 'human' ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              iconLeft={<Sparkles size={14} />}
+              disabled={!canRunAI || source !== 'api'}
+              title={source !== 'api' ? 'Потрібен запущений сервер' : 'AI підготує відповідь — клієнт її не отримає без вашого схвалення'}
+              onClick={() => void useAIStore.getState().respond(d.uuid)}
+              className="-ml-2 text-brand-2"
+            >
+              Запустити AI
+            </Button>
+          ) : null}
+        </div>
         <form onSubmit={submit} className="flex items-start gap-2">
           <Input
             ref={inputRef}
             className="flex-1"
             aria-label="Повідомлення"
             autoComplete="off"
-            placeholder={d.ai_active ? 'Написати від імені салону (AI призупиниться)…' : 'Написати повідомлення…'}
+            placeholder={mode === 'auto' ? 'Написати від імені салону (AI призупиниться)…' : 'Написати повідомлення…'}
             value={text}
             onChange={(e) => setText(e.target.value)}
             inputClassName="border-transparent bg-surface-2 hover:border-transparent"
@@ -333,21 +479,24 @@ export default function ActiveChat({ className }: { className?: string }) {
             <span className="hidden sm:inline">Надіслати</span>
           </Button>
         </form>
-        <div className="mt-2 flex gap-x-4 gap-y-1 overflow-x-auto whitespace-nowrap text-xs text-ink-3 sm:flex-wrap">
-          {QUICK_REPLIES.map((q) => (
-            <button
-              key={q}
-              type="button"
-              onClick={() => {
-                setText(q);
-                inputRef.current?.focus();
-              }}
-              className="shrink-0 underline decoration-transparent underline-offset-4 transition hover:text-ink-2 hover:decoration-gold-soft focus-visible:outline-none focus-visible:decoration-gold"
-            >
-              {q}
-            </button>
-          ))}
-        </div>
+        {/* поки є пропозиція AI — швидкі відповіді лише заважають */}
+        {!hasPending && (
+          <div className="mt-2 flex gap-x-4 gap-y-1 overflow-x-auto whitespace-nowrap text-xs text-ink-3 sm:flex-wrap">
+            {QUICK_REPLIES.map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => {
+                  setText(q);
+                  inputRef.current?.focus();
+                }}
+                className="shrink-0 underline decoration-transparent underline-offset-4 transition hover:text-ink-2 hover:decoration-gold-soft focus-visible:outline-none focus-visible:decoration-gold"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        )}
       </footer>
     </main>
   );

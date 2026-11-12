@@ -38,8 +38,9 @@ const SPINNER: Record<ButtonSize, number> = { sm: 14, md: 16, lg: 18 };
 /**
  * Button in the MDS Connect style (`.btn`).
  *
- * While `loading`, the label stays in the layout (invisible) so the width does not jump,
- * a spinner is shown on top and the button is disabled with `aria-busy`.
+ * While `loading`, the label stays in the layout (transparent, still readable by screen readers
+ * and `getByRole(..., { name })`) so the width does not jump; a spinner is shown on top and the
+ * button is disabled with `aria-busy`.
  *
  * @example
  * <Button iconLeft={<Send size={16} />} loading={saving} onClick={save}>Надіслати</Button>
@@ -79,14 +80,15 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
       )}
       {...rest}
     >
-      <span className={cn('inline-flex items-center gap-[inherit]', loading && 'invisible')}>
+      {/* opacity-0, а не visibility:hidden: підпис лишається в дереві доступності (назва кнопки) */}
+      <span className={cn('inline-flex items-center gap-[inherit]', loading && 'opacity-0')}>
         {iconLeft}
         {children}
         {iconRight}
       </span>
       {loading && (
-        <span className="absolute inset-0 flex items-center justify-center">
-          <Loader2 size={SPINNER[size]} className="animate-spin" aria-hidden="true" />
+        <span className="pointer-events-none absolute inset-0 flex items-center justify-center" aria-hidden="true">
+          <Loader2 size={SPINNER[size]} className="animate-spin" />
         </span>
       )}
     </button>

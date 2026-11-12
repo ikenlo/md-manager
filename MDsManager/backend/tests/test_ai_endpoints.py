@@ -176,3 +176,48 @@ def test_ai_endpoints_require_auth(client, db_session, dialogue):
     assert client.post(url(dialogue, f"{s.uuid}/reject"), json={}).status_code == 401
     assert client.post(url(dialogue, "respond")).status_code == 401
     assert client.get(url(dialogue, "pending")).status_code == 401
+
+
+CONFIRMATION = "Вас записано на Манікюр 01.12.2026 о 10:00. Чекаємо вас! 😊"
+
+
+def test_respond_includes_suggested_message_for_booking(client, auth, dialogue, monkeypatch):
+    import app.api.routes.ai as routes
+
+    async def fake_agent(history):
+        return {
+            "content": "Хвилинку, уточнюю деталі.",
+            "iterations": 2,
+            "tool_calls_history": [],
+            "needs_approval": True,
+            "proposed_booking": BOOKING,
+            "intent": "booking",
+        }
+
+    monkeypatch.setattr(routes, "run_agent", fake_agent)
+    body = client.post(url(dialogue, "respond"), headers=auth).json()
+    assert body["content"] == "Хвилинку, уточнюю деталі."  # чернетка AI лишається як є
+    assert body["suggested_message"] == CONFIRMATION
+    assert body["suggested_message"].startswith("Вас записано на")
+
+
+def test_pending_includes_suggested_message(client, auth, db_session, dialogue):
+    seed(db_session, dialogue)
+    got = client.get(url(dialogue, "pending"), headers=auth).json()["suggestion"]
+    assert got["suggested_message"] == CONFIRMATION
+    assert got["content"] == "Хвилинку, уточнюю деталі."
+
+
+def test_respond_includes_suggested_message_for_question(client, auth, dialogue):
+    body = client.post(url(dialogue, "respond"), headers=auth).json()
+    assert body["proposed_booking"] is None
+    assert body["suggested_message"] == body["content"]
+    pending = client.get(url(dialogue, "pending"), headers=auth).json()["suggestion"]
+    assert pending["suggested_message"] == body["content"]
+
+
+def test_approve_sends_what_pending_suggested(client, auth, db_session, dialogue):
+    seed(db_session, dialogue)
+    shown = client.get(url(dialogue, "pending"), headers=auth).json()["suggestion"]
+    client.post(url(dialogue, f"{shown['uuid']}/approve"), headers=auth, json={})
+    assert last_outbound(db_session, dialogue).content == shown["suggested_message"]

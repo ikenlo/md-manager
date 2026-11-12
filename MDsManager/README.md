@@ -74,6 +74,49 @@ curl http://localhost:11434/api/tags
 ```
 Expected: JSON with list of models including `qwen3:14b`.
 
+## AI Sales Agent (Phase 3)
+
+### How it works
+1. Client writes message → appears in Inbox.
+2. If dialogue mode = «AI авто» → AI generates a suggestion automatically.
+   If mode = «Вручну» → admin clicks «Запустити AI».
+   If mode = «Людина» → AI disabled for this dialogue.
+3. AI suggestion appears as a panel above the input with:
+   - Editable text (admin can modify before sending; for bookings — ready confirmation «Вас записано на …»)
+   - Booking details (if AI proposes an appointment)
+   - Buttons: Схвалити / Відхилити / Перегенерувати
+4. Admin clicks «Схвалити» → message sent to client (via outbound queue).
+   For bookings → mock appointment created (Phase 4: real Connect call).
+
+### Modes
+- **AI авто**: AI generates suggestions on every new inbound message (while the Manager is open in a browser).
+- **Вручну**: AI runs only when admin clicks «Запустити AI».
+- **Людина**: AI disabled; only manual responses.
+- Set per dialogue, stored in browser (`localStorage`). Server persistence: Phase 4.
+
+### Safety
+- AI never sends messages automatically. Always requires admin approval.
+- Two-step confirmation for bookings (AI proposes, admin confirms, then the booking is created).
+- AI cannot create an appointment by itself: write-tools are only executed on approve.
+- A manual reply cancels the pending AI suggestion.
+
+### Testing AI without Ollama
+- `MOCK_OLLAMA=true` (default) → mock responses, no GPU needed.
+- For real testing on PC: install Ollama, pull `qwen3:14b`, set `MOCK_OLLAMA=false`.
+
+### E2E tests
+```powershell
+cd MDsManager/frontend
+npm install
+npx playwright install chromium
+npm run test:e2e
+```
+12 tests cover: mode toggle, panel, approve, reject, regenerate, auto-trigger, two-tab dedup, typing bubble, ChatList badge.
+The tests start their own backend (`e2e/backend.py`, clean temp DB, mock Meta/Ollama) on ports 8765/5199;
+Python is taken from `E2E_PYTHON` (default `python` — activate the backend venv first).
+
+Screenshots: `docs/screenshots/phase3-*.png` (regenerate: `npm run capture:phase3`).
+
 ## Перевірки
 
 ```powershell

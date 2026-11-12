@@ -7,7 +7,7 @@ approve — async: виконує інструмент і надсилає по�
 
 import asyncio
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -26,6 +26,25 @@ PENDING_TTL_HOURS = 24
 # Один процес (без --workers): погодження йдуть по черзі — подвійний клік двох адміністраторів
 # не створить два записи й не надішле клієнту два однакові повідомлення
 _approve_lock = asyncio.Lock()
+
+
+def build_confirmation_text(suggestion: AISuggestion) -> str:
+    """Текст, який отримає клієнт після схвалення (і який бачить адміністратор у панелі).
+
+    Запис: «Вас записано на {послуга} {ДД.ММ.РРРР} о {час}. Чекаємо вас! 😊»;
+    інакше — відповідь AI як є. Єдине джерело формату: /respond, /pending і /approve.
+    """
+    booking = suggestion.proposed_booking
+    if not booking:
+        return suggestion.content
+    raw_date = str(booking.get("date") or "")
+    try:
+        date_str = datetime.strptime(raw_date, "%Y-%m-%d").strftime("%d.%m.%Y")
+    except ValueError:
+        date_str = raw_date
+    service = booking.get("service_name") or "послугу"
+    time_str = booking.get("time") or ""
+    return f"Вас записано на {service} {date_str} о {time_str}. Чекаємо вас! 😊"
 
 
 def save_suggestion(

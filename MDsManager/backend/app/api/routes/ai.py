@@ -4,7 +4,6 @@
 """
 
 import logging
-from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
@@ -26,6 +25,7 @@ from app.services.adapters.ollama_base import OllamaDisabledError
 from app.services.ai_agent import build_messages_from_dialogue, run_agent
 from app.services.ai_suggestions import (
     approve_suggestion,
+    build_confirmation_text,
     get_pending_for_dialogue,
     reject_suggestion,
     save_suggestion,
@@ -55,18 +55,6 @@ def _get_suggestion_or_404(db: Session, dialogue: Dialogue, suggestion_uuid: str
     if s is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Suggestion not found")
     return s
-
-
-def booking_confirmation(booking: dict) -> str:
-    """Текст для клієнта після погодження запису: «Вас записано на Манікюр 01.12.2026 о 10:00»."""
-    raw_date = str(booking.get("date") or "")
-    try:
-        date_str = datetime.strptime(raw_date, "%Y-%m-%d").strftime("%d.%m.%Y")
-    except ValueError:
-        date_str = raw_date
-    service = booking.get("service_name") or "послугу"
-    time_str = booking.get("time") or ""
-    return f"Вас записано на {service} {date_str} о {time_str}. Чекаємо вас! 😊"
 
 
 @router.post(
@@ -117,6 +105,7 @@ async def ai_respond(
         intent=suggestion.intent,
         needs_approval=result["needs_approval"],
         proposed_booking=suggestion.proposed_booking,
+        suggested_message=build_confirmation_text(suggestion),
     )
 
 
@@ -136,6 +125,7 @@ def ai_pending(
             proposed_booking=s.proposed_booking,
             status=s.status,
             created_at=s.created_at,
+            suggested_message=build_confirmation_text(s),
         )
     )
 
@@ -168,13 +158,9 @@ async def ai_approve(
             status.HTTP_400_BAD_REQUEST, f"Status is '{suggestion.status}', not 'pending'"
         )
 
+    # той самий текст, що /respond і /pending показали як suggested_message
     custom = (body.message_text or "").strip()
-    if custom:
-        text = custom
-    elif suggestion.proposed_booking:
-        text = booking_confirmation(suggestion.proposed_booking)
-    else:
-        text = suggestion.content.strip()
+    text = custom or build_confirmation_text(suggestion).strip()
     if not text:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Порожній текст — вкажіть message_text")
     # що реально пішло клієнту (сервіс відправляє suggestion.content)
