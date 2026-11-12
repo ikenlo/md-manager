@@ -13,7 +13,9 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from app.api.routes import _test, auth, dialogues, media, settings, ws
 from app.config import FRONTEND_DIST, get_settings
+from app.database import SessionLocal
 from app.security import HTTPSRedirectMiddleware
+from app.services.ai_suggestions import expire_stale
 from app.services.events import events
 from app.services.outbound_worker import OutboundWorker
 from app.services.rate_limit import limiter, rate_limit_handler
@@ -21,6 +23,19 @@ from app.services.ws_manager import forward_to_ws
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 log = logging.getLogger("mds")
+
+
+def _hourly_cleanup() -> None:
+    """Прострочує пропозиції AI, що чекають рішення довше PENDING_TTL_HOURS."""
+    db = SessionLocal()
+    try:
+        count = expire_stale(db)
+        if count:
+            log.info("Hourly: expired %d stale AI suggestions", count)
+    except Exception:
+        log.exception("Hourly cleanup: збій")
+    finally:
+        db.close()
 
 
 @asynccontextmanager
@@ -41,7 +56,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             max_instances=1,
             coalesce=True,
         )
+        scheduler.add_job(
+            _hourly_cleanup,
+            "interval",
+            hours=1,
+            id="expire_ai_suggestions",
+            max_instances=1,
+            coalesce=True,
+        )
         scheduler.start()
+        log.info("Scheduler started: expire_ai_suggestions (hourly)")
         log.info(
             "Outbound worker started (interval: %d sec, mock_meta: %s)",
             cfg.outbound_interval_seconds,

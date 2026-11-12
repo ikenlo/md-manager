@@ -1,9 +1,11 @@
-"""Пропозиції AI на погодження адміністратора: зберегти, знайти, відхилити, прострочити.
+"""Пропозиції AI на погодження адміністратора: зберегти, знайти, погодити, відхилити, прострочити.
 
-Синхронні функції (SQLAlchemy sync) — викликаються з роутерів FastAPI.
+save/get/reject/expire — синхронні (SQLAlchemy sync);
+approve — async: виконує інструмент і надсилає подію.
 Час — лише aware UTC (`utcnow()`): UTCDateTime відхиляє naive datetime.
 """
 
+import asyncio
 import logging
 from datetime import timedelta
 from typing import Any
@@ -11,13 +13,19 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models.ai_suggestion import AISuggestion
+from app.models import AISuggestion, Message, OutboundQueue
 from app.models.base import utcnow
+from app.services.events import NEW_MESSAGE, events
+from app.services.tools import execute_tool
 
 logger = logging.getLogger(__name__)
 
 # Пропозиція без рішення довше цього — застаріла (клієнт уже чекав надто довго)
 PENDING_TTL_HOURS = 24
+
+# Один процес (без --workers): погодження йдуть по черзі — подвійний клік двох адміністраторів
+# не створить два записи й не надішле клієнту два однакові повідомлення
+_approve_lock = asyncio.Lock()
 
 
 def save_suggestion(
@@ -120,6 +128,73 @@ def expire_stale(db: Session) -> int:
     return len(stale)
 
 
-def approve_suggestion(db: Session, suggestion_uuid: str, user_id: int) -> AISuggestion:
-    """Виконає proposed_booking, створить повідомлення й поставить у чергу. Буде в 2.3.3b."""
-    raise NotImplementedError("approve_suggestion is implemented in Phase 3 Part 2.3.3b")
+async def approve_suggestion(db: Session, suggestion_uuid: str, user_id: int) -> AISuggestion:
+    """Погоджує пропозицію AI.
+
+    1. Якщо є proposed_booking — виконує інструмент (create_appointment). Помилка → ValueError,
+       у БД нічого не змінюється, пропозиція лишається pending.
+    2. Текст AI стає вихідним повідомленням (sender_type=agent) і йде в чергу відправки.
+    3. Статус approved; подія new_message — після commit.
+    ValueError — не знайдено, вже не pending або запис не вдався.
+    """
+    async with _approve_lock:
+        suggestion = _get_pending_or_raise(db, suggestion_uuid)
+        dialogue = suggestion.dialogue
+        booking = suggestion.proposed_booking
+
+        # Інструмент — до будь-яких змін у БД: його збій нічого не лишає по собі
+        if booking:
+            args = {k: booking.get(k) for k in ("service_name", "date", "time")}
+            tool = booking.get("tool") or "create_appointment"
+            tool_result = await execute_tool(tool, args)
+            if tool_result.get("error"):
+                db.rollback()
+                logger.warning(
+                    "AI suggestion approve failed: uuid=%s, tool=%s", suggestion_uuid, tool
+                )
+                raise ValueError(f"Booking failed: {tool_result['error']}")
+            # новий dict — щоб SQLAlchemy помітив зміну JSON; booking_id лишається для звірки
+            suggestion.proposed_booking = {**booking, "result": tool_result}
+
+        try:
+            now = utcnow()
+            msg = Message(
+                dialogue_id=dialogue.id,
+                sender_type="agent",
+                content=suggestion.content,
+                direction="outbound",
+                status="queued",
+                created_at=now,
+            )
+            db.add(msg)
+            db.flush()
+            db.add(OutboundQueue(message_id=msg.id, status="pending", next_retry_at=now))
+            dialogue.last_message_at = now
+            if dialogue.status == "new":
+                dialogue.status = "in_progress"
+            suggestion.status = "approved"
+            suggestion.resolved_at = now
+            suggestion.resolved_by_user_id = user_id
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+        db.refresh(suggestion)
+        db.refresh(msg)
+
+    # Подія — після commit і поза блокуванням (той самий формат, що в POST /messages)
+    from app.api.routes.dialogues import message_out  # пізній імпорт: сервіс ← роутер
+
+    await events.emit(
+        NEW_MESSAGE,
+        {"dialogue_uuid": dialogue.uuid, "message": message_out(msg).model_dump(mode="json")},
+    )
+    logger.info(
+        "AI suggestion approved: uuid=%s, dialogue=%s, user=%s, message_uuid=%s, booking=%s",
+        suggestion_uuid,
+        dialogue.id,
+        user_id,
+        msg.uuid,
+        bool(booking),
+    )
+    return suggestion
