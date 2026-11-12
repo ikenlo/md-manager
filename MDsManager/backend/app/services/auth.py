@@ -37,21 +37,47 @@ def authenticate(db: Session, email: str, password: str) -> User | None:
     return user if verify_password(password, user.password_hash) else None
 
 
-def create_session(
-    db: Session, user: User, ip: str | None, user_agent: str | None
+def _new_session(
+    db: Session, user_id: int, ip: str | None, user_agent: str | None
 ) -> tuple[str, UserSession]:
     token = secrets.token_urlsafe(48)
     sess = UserSession(
-        user_id=user.id,
+        user_id=user_id,
         token_hash=hash_token(token),
         expires_at=utcnow() + timedelta(days=get_settings().session_ttl_days),
         ip_address=ip,
         user_agent=(user_agent or "")[:512] or None,
     )
     db.add(sess)
+    return token, sess
+
+
+def create_session(
+    db: Session, user: User, ip: str | None, user_agent: str | None
+) -> tuple[str, UserSession]:
+    token, sess = _new_session(db, user.id, ip, user_agent)
     db.execute(delete(UserSession).where(UserSession.expires_at < utcnow()))
     db.commit()
     return token, sess
+
+
+def rotate_session(
+    db: Session, token: str, ip: str | None, user_agent: str | None
+) -> tuple[str, UserSession] | None:
+    """Новий токен замість чинного; старий видаляється в тій самій транзакції.
+
+    None — токен невідомий, протух або користувач вимкнений.
+    """
+    old = db.scalar(select(UserSession).where(UserSession.token_hash == hash_token(token)))
+    if old is None or old.expires_at <= utcnow():
+        return None
+    user = old.user
+    if not user.is_active or user.deleted_at is not None:
+        return None
+    db.delete(old)
+    new_token, sess = _new_session(db, user.id, ip, user_agent)
+    db.commit()
+    return new_token, sess
 
 
 def user_by_token(db: Session, token: str) -> User | None:

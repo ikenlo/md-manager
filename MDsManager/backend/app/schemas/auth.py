@@ -20,3 +20,8 @@ class LoginOut(BaseModel):
     token: str
     expires_at: datetime
     user: UserOut
+
+
+class RefreshOut(BaseModel):
+    token: str = Field(description="Новий токен; попередній більше не діє")
+    expires_at: datetime = Field(description="Коли завершиться нова сесія (UTC)")

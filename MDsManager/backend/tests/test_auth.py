@@ -68,3 +68,34 @@ def test_set_password_changes_login_and_revokes_sessions(client, db_session, aut
     )
     assert ok.status_code == 200
     assert not set_password(db_session, "nobody@mds.local", "x" * 12)
+
+
+def test_refresh_extends_session(client, db_session, auth):
+    old_token = auth["Authorization"].removeprefix("Bearer ")
+    sess = db_session.scalar(select(UserSession))
+    sess.expires_at = utcnow() + timedelta(hours=1)
+    db_session.commit()
+
+    r = client.post("/api/auth/refresh", headers=auth)
+    assert r.status_code == 200
+    new_token = r.json()["token"]
+    assert new_token != old_token
+
+    sessions = db_session.scalars(select(UserSession)).all()
+    assert [s.token_hash for s in sessions] == [hash_token(new_token)]
+    ttl = sessions[0].expires_at - utcnow()
+    assert timedelta(days=6, hours=23) < ttl <= timedelta(days=7)
+
+    assert client.get("/api/auth/me", headers=auth).status_code == 401
+    new = {"Authorization": f"Bearer {new_token}"}
+    assert client.get("/api/auth/me", headers=new).status_code == 200
+    assert client.post("/api/auth/refresh", headers=auth).status_code == 401
+
+
+def test_refresh_rejects_expired_and_missing_token(client, db_session, auth):
+    assert client.post("/api/auth/refresh").status_code == 401
+    sess = db_session.scalar(select(UserSession))
+    sess.expires_at = utcnow() - timedelta(seconds=1)
+    db_session.commit()
+    assert client.post("/api/auth/refresh", headers=auth).status_code == 401
+    assert db_session.scalar(select(UserSession)) is not None

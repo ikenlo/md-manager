@@ -75,6 +75,7 @@ data/                                   # SQLite (mds.db)
 |---|---|---|
 | POST | `/api/auth/login` | `{email, password}` → `{token, expires_at, user}`; 5 спроб / 15 хв на IP, далі 429 |
 | GET | `/api/auth/me` | поточний користувач |
+| POST | `/api/auth/refresh` | новий токен на 7 днів → `{token, expires_at}`; старий одразу недійсний, протухлий → 401 |
 | POST | `/api/auth/logout` | завершити сесію |
 | GET | `/api/dialogues` | фільтри: `status`, `channel`, `tag`, `q`, `limit`, `offset` |
 | GET | `/api/dialogues/{uuid}/messages` | `limit`, `before_id` |
