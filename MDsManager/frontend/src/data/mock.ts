@@ -1,0 +1,131 @@
+// Демо-дані для оболонки «Діалоги» (Фаза 1, до підключення реального API).
+// Час рахується відносно моменту завантаження, щоб список показував «сьогодні».
+import type { Dialogue, Message } from '../types';
+
+const ago = (minutes: number): string => new Date(Date.now() - minutes * 60_000).toISOString();
+
+const OLENA = 'demo-dlg-olena';
+const MARIA = 'demo-dlg-maria';
+const IRYNA = 'demo-dlg-iryna';
+
+export const mockMessages: Record<string, Message[]> = {
+  [OLENA]: [
+    {
+      uuid: 'demo-msg-olena-1',
+      sender_type: 'client',
+      content: 'Добрий день! Хочу записатися на манікюр з покриттям.',
+      created_at: ago(48),
+    },
+    {
+      uuid: 'demo-msg-olena-2',
+      sender_type: 'agent',
+      content: 'Вітаю, Олено! Манікюр з покриттям — 650 грн, триває близько 1,5 год. На який день вам зручно?',
+      created_at: ago(47),
+    },
+    {
+      uuid: 'demo-msg-olena-3',
+      sender_type: 'client',
+      content: 'А можна одразу з дизайном на два нігті?',
+      created_at: ago(30),
+    },
+    {
+      uuid: 'demo-msg-olena-4',
+      sender_type: 'human',
+      content: 'Так, звісно! Дизайн +50 грн за ніготь, майстер Ірина зробить 😊',
+      created_at: ago(20),
+    },
+    {
+      uuid: 'demo-msg-olena-5',
+      sender_type: 'client',
+      content: 'Дякую! Підкажіть, чи є вільний час на четвер після 17:00?',
+      created_at: ago(5),
+    },
+  ],
+  [MARIA]: [
+    {
+      uuid: 'demo-msg-maria-1',
+      sender_type: 'client',
+      content: 'Доброго дня!',
+      created_at: ago(16),
+    },
+    {
+      uuid: 'demo-msg-maria-2',
+      sender_type: 'agent',
+      content: 'Вітаємо в M&D! Чим можемо допомогти?',
+      created_at: ago(15),
+    },
+    {
+      uuid: 'demo-msg-maria-3',
+      sender_type: 'client',
+      content: 'Доброго дня, скільки коштує педикюр?',
+      created_at: ago(12),
+    },
+  ],
+  [IRYNA]: [
+    {
+      uuid: 'demo-msg-iryna-1',
+      sender_type: 'client',
+      content: 'Привіт! Є вільне віконце на стрижку завтра зранку?',
+      created_at: ago(190),
+    },
+    {
+      uuid: 'demo-msg-iryna-2',
+      sender_type: 'agent',
+      content: 'Вітаю, Ірино! Завтра є 10:00 та 11:30 у майстра Олександри. Записати вас?',
+      created_at: ago(188),
+    },
+    {
+      uuid: 'demo-msg-iryna-3',
+      sender_type: 'client',
+      content: 'Так, записуюсь на завтра о 10:00',
+      created_at: ago(180),
+    },
+    {
+      uuid: 'demo-msg-iryna-4',
+      sender_type: 'system',
+      content: 'Створено запис: стрижка, завтра о 10:00',
+      created_at: ago(179),
+    },
+  ],
+};
+
+const lastAt = (id: string): string => {
+  const list = mockMessages[id]!;
+  return list[list.length - 1]!.created_at;
+};
+
+export const mockDialogues: Dialogue[] = [
+  {
+    uuid: OLENA,
+    status: 'in_progress',
+    channel: 'instagram',
+    client: { uuid: 'demo-cl-olena', name: 'Олена К.', instagram_handle: 'olena.k', phone: null },
+    tags: ['манікюр'],
+    last_message_at: lastAt(OLENA),
+    preview: 'Дякую! Підкажіть, чи є вільний час на четвер після 17:00?',
+    unread: 1,
+    ai_active: false,
+  },
+  {
+    uuid: MARIA,
+    status: 'new',
+    channel: 'facebook',
+    client: { uuid: 'demo-cl-maria', name: 'Марія П.', instagram_handle: null, phone: null },
+    tags: ['педикюр'],
+    last_message_at: lastAt(MARIA),
+    preview: 'Доброго дня, скільки коштує педикюр?',
+    unread: 1,
+    ai_active: true,
+  },
+  {
+    uuid: IRYNA,
+    status: 'ordered',
+    channel: 'instagram',
+    client: { uuid: 'demo-cl-iryna', name: 'Ірина Т.', instagram_handle: 'iryna.t', phone: null },
+    tags: ['стрижка'],
+    last_message_at: lastAt(IRYNA),
+    preview: 'Так, записуюсь на завтра о 10:00',
+    unread: 0,
+    ai_active: true,
+  },
+];
