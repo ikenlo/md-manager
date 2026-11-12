@@ -6,10 +6,13 @@ import Sidebar from '../components/Sidebar';
 import { cn, toast } from '../components/ui';
 import { mockDialogues, mockMessages } from '../data/mock';
 import { connect, disconnect } from '../lib/ws';
+import { useAIStore } from '../store/ai';
 import { useAuthStore } from '../store/auth';
 import { useInboxStore } from '../store/inbox';
 
 // Лише для `npm run dev`: у production-збірку не потрапляє
+const BULK_PENDING_LIMIT = 20;
+
 const DevPanel = import.meta.env.DEV ? lazy(() => import('../components/DevPanel')) : null;
 
 export default function InboxPage() {
@@ -17,6 +20,7 @@ export default function InboxPage() {
   const isMock = useAuthStore((s) => s.isMock);
   const hasActive = useInboxStore((s) => s.activeDialogueUuid !== null);
   const source = useInboxStore((s) => s.source);
+  const dialogueCount = useInboxStore((s) => s.dialogues.length);
   const [offline, setOffline] = useState(false);
 
   // Дані: реальні з API; демо — лише при вході без сервера (dev)
@@ -25,6 +29,17 @@ export default function InboxPage() {
     if (isMock) s.setDialogues(mockDialogues, mockMessages, 'mock');
     else void s.loadDialogues();
   }, [isMock]);
+
+  // Пропозиції AI для бейджів у списку: 20 найсвіжіших діалогів (решта — при відкритті).
+  // Лише коли змінюється кількість діалогів (перше завантаження, новий діалог), без опитування.
+  useEffect(() => {
+    if (source !== 'api' || dialogueCount === 0) return;
+    const ai = useAIStore.getState();
+    const recent = useInboxStore.getState().dialogues.slice(0, BULK_PENDING_LIMIT);
+    Promise.all(recent.map((d) => ai.fetchPending(d.uuid))).catch((err) =>
+      console.warn('Failed to fetch pending AI for dialogues:', err),
+    );
+  }, [source, dialogueCount]);
 
   // Realtime
   useEffect(() => {
