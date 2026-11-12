@@ -20,11 +20,13 @@ import {
   X,
 } from 'lucide-react';
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { aiReject } from '../api/ai';
 import { AI_MODES, getAIMode, setAIMode, type AIMode } from '../lib/ai_mode';
 import { dayLabel, msgTime } from '../lib/format';
 import { useAIStore } from '../store/ai';
 import { STATUS_LABEL, useInboxStore } from '../store/inbox';
 import type { Attachment, Dialogue, Message, MessageStatus } from '../types';
+import { AISuggestionPanel } from './AISuggestionPanel';
 import ChannelIcon, { channelLabel } from './ChannelIcon';
 import { CHANNEL_RING } from './ChatList';
 import { Avatar, Badge, Button, Chip, Divider, Input, Skeleton, cn, toast } from './ui';
@@ -215,6 +217,8 @@ export default function ActiveChat({ className }: { className?: string }) {
   const source = useInboxStore((s) => s.source);
   const pending = useAIStore((s) => (activeUuid ? s.pendingByDialogue[activeUuid] : undefined));
   const responding = useAIStore((s) => (activeUuid ? Boolean(s.responding[activeUuid]) : false));
+  const isApproving = useAIStore((s) => (pending ? Boolean(s.approving[pending.uuid]) : false));
+  const isRejecting = useAIStore((s) => (pending ? Boolean(s.rejecting[pending.uuid]) : false));
   const [mode, setMode] = useState<AIMode>('manual');
   const messages = useMemo(() => list ?? [], [list]);
   const loading = list === undefined;
@@ -234,7 +238,14 @@ export default function ActiveChat({ className }: { className?: string }) {
   useEffect(() => {
     if (!activeUuid) return;
     const fromServer = useInboxStore.getState().dialogues.find((x) => x.uuid === activeUuid)?.ai_active;
-    setMode(getAIMode(activeUuid, fromServer === false ? 'human' : 'manual'));
+    const m = getAIMode(activeUuid, fromServer === false ? 'human' : 'manual');
+    setMode(m);
+    // збережений режим важливіший за ai_active з сервера — чип «Людина» у списку має збігатися
+    if (fromServer !== undefined && fromServer !== (m !== 'human')) {
+      useInboxStore.setState((st) => ({
+        dialogues: st.dialogues.map((x) => (x.uuid === activeUuid ? { ...x, ai_active: m !== 'human' } : x)),
+      }));
+    }
   }, [activeUuid]);
 
   // Пропозиція AI, що чекає рішення (демо-режим без сервера — пропускаємо)
@@ -280,6 +291,11 @@ export default function ActiveChat({ className }: { className?: string }) {
     if (!ok) {
       setText(value); // повертаємо текст, щоб не загубився
       toast.error('Не вдалося надіслати. Спробуйте ще раз');
+    } else if (pending) {
+      // відповіли вручну — пропозиція AI застаріла: прибираємо тут і відхиляємо на сервері,
+      // інакше після перезавантаження вона повернулась би «привидом»
+      useAIStore.getState().clearPending(d.uuid);
+      aiReject(d.uuid, pending.uuid, 'manual reply').catch(() => undefined);
     }
     inputRef.current?.focus();
   };
@@ -385,19 +401,37 @@ export default function ActiveChat({ className }: { className?: string }) {
         </div>
       )}
 
+      {pending && (
+        <div className="max-h-[55vh] shrink-0 overflow-y-auto border-t border-line bg-bg px-3 py-3 sm:px-5">
+          <AISuggestionPanel
+            suggestion={pending}
+            isApproving={isApproving}
+            isRejecting={isRejecting}
+            isRegenerating={responding}
+            onApprove={async (messageText) => {
+              // успіх: стор прибирає pending, повідомлення приходить через WebSocket (new_message)
+              await useAIStore.getState().approve(d.uuid, pending.uuid, messageText);
+            }}
+            onReject={async () => {
+              await useAIStore.getState().reject(d.uuid, pending.uuid);
+            }}
+            onRegenerate={async () => {
+              await useAIStore.getState().respond(d.uuid);
+            }}
+            onClose={() => useAIStore.getState().clearPending(d.uuid)}
+          />
+        </div>
+      )}
+
       <footer className="shrink-0 border-t border-line bg-surface px-3 pb-[calc(12px+env(safe-area-inset-bottom))] pt-3 sm:p-5">
         <div className="mb-2 flex min-h-8 flex-wrap items-center gap-2 text-xs text-ink-3">
           {/* на телефоні в шапці немає місця — перемикач тут */}
           <AIModeToggle mode={mode} onChange={changeMode} className="sm:hidden" />
-          {responding ? (
+          {hasPending ? null : responding ? (
+            // з відкритою панеллю очікування показує кнопка «Перегенерувати»
             <span role="status" className="inline-flex items-center gap-1.5">
               <Loader2 size={14} className="animate-spin" aria-hidden="true" />
               AI думає...
-            </span>
-          ) : hasPending ? (
-            <span className="inline-flex items-center gap-1.5 font-semibold text-gold">
-              <Sparkles size={14} aria-hidden="true" />
-              Пропозиція AI готова
             </span>
           ) : mode !== 'human' ? (
             <Button
@@ -429,21 +463,24 @@ export default function ActiveChat({ className }: { className?: string }) {
             <span className="hidden sm:inline">Надіслати</span>
           </Button>
         </form>
-        <div className="mt-2 flex gap-x-4 gap-y-1 overflow-x-auto whitespace-nowrap text-xs text-ink-3 sm:flex-wrap">
-          {QUICK_REPLIES.map((q) => (
-            <button
-              key={q}
-              type="button"
-              onClick={() => {
-                setText(q);
-                inputRef.current?.focus();
-              }}
-              className="shrink-0 underline decoration-transparent underline-offset-4 transition hover:text-ink-2 hover:decoration-gold-soft focus-visible:outline-none focus-visible:decoration-gold"
-            >
-              {q}
-            </button>
-          ))}
-        </div>
+        {/* поки є пропозиція AI — швидкі відповіді лише заважають */}
+        {!hasPending && (
+          <div className="mt-2 flex gap-x-4 gap-y-1 overflow-x-auto whitespace-nowrap text-xs text-ink-3 sm:flex-wrap">
+            {QUICK_REPLIES.map((q) => (
+              <button
+                key={q}
+                type="button"
+                onClick={() => {
+                  setText(q);
+                  inputRef.current?.focus();
+                }}
+                className="shrink-0 underline decoration-transparent underline-offset-4 transition hover:text-ink-2 hover:decoration-gold-soft focus-visible:outline-none focus-visible:decoration-gold"
+              >
+                {q}
+              </button>
+            ))}
+          </div>
+        )}
       </footer>
     </main>
   );
