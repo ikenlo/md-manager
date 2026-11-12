@@ -8,6 +8,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 BACKEND_DIR = Path(__file__).resolve().parent.parent
 PROJECT_DIR = BACKEND_DIR.parent
 DEFAULT_DB_PATH = (PROJECT_DIR / "data" / "mds.db").as_posix()
+DEFAULT_MEDIA_DIR = (PROJECT_DIR / "media").as_posix()
 FRONTEND_DIST = (PROJECT_DIR / "frontend" / "dist").as_posix()
 
 LOCAL_HOSTS = ("localhost", "127.0.0.1")
@@ -35,6 +36,13 @@ class Settings(BaseSettings):
     # Від кого довіряємо CF-Connecting-IP / X-Forwarded-Proto (cloudflared на цій машині)
     trusted_proxies: str = Field("127.0.0.1,::1", alias="TRUSTED_PROXIES")
     login_rate_limit: str = Field("5/15minutes", alias="LOGIN_RATE_LIMIT")
+
+    # Диспетчер (Фаза 2). MOCK_META=true — без реальних викликів Meta Graph API
+    mock_meta: bool = Field(True, alias="MOCK_META")
+    outbound_interval_seconds: int = Field(30, ge=1, alias="OUTBOUND_INTERVAL_SECONDS")
+    max_outbound_retries: int = Field(5, ge=1, alias="MAX_OUTBOUND_RETRIES")
+    # Вкладення з Meta зберігаються локально (лише прямі слеші)
+    media_dir: str = Field(DEFAULT_MEDIA_DIR, alias="MEDIA_DIR")
 
     @property
     def is_production(self) -> bool:

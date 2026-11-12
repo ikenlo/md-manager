@@ -1,4 +1,4 @@
-from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, ForeignKey, Integer, String, Text, false
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -15,6 +15,13 @@ class CrmClient(IdMixin, TimestampMixin, SoftDeleteMixin, Base):
     # копійки
     total_spent: Mapped[int] = mapped_column(Integer, default=0)
     visits_count: Mapped[int] = mapped_column(Integer, default=0)
+    # Meta: ідентифікатори відправника (PSID / IGSID) — по них зводимо вхідні з клієнтом
+    meta_ig_user_id: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
+    meta_fb_user_id: Mapped[str | None] = mapped_column(String(64), unique=True, index=True)
+    avatar_url: Mapped[str | None] = mapped_column(String(500))
+    username: Mapped[str | None] = mapped_column(String(100))
+    # профіль недоступний (приватний акаунт / не дав згоди) — ім'я тимчасове
+    is_anonymous: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
 
     links: Mapped[list["ClientLink"]] = relationship(
         back_populates="crm_client", cascade="all, delete-orphan", passive_deletes=True
