@@ -120,6 +120,49 @@
 - Reject `reason` is not stored (logged by length only) — no column for it yet.
 - `respond` is triggered manually (no auto-run on new inbound message yet) — Part 3.
 
+## Phase 3 (COMPLETE — AI Sales Agent)
+
+### What was done
+- OllamaAdapter (mock + real, strips `<think>` tags, `health()` check)
+- System prompt (`sales_agent.md` — Ukrainian, 2-step approval, neutral reply while a booking awaits approval)
+- Tools: `get_services`, `get_slots`, `create_appointment` (mock; Phase 4: real Connect)
+- AI Agent orchestrator: `run_agent` with tool loop (max 3 iterations), intent detection
+- Write-tools return `pending_approval` (no execution before human approve)
+- AISuggestion model (migration 0003) + service (save/get/approve/reject/expire; hourly expiry job)
+- Endpoints: `/ai/respond`, `/ai/pending`, `/ai/{uuid}/approve`, `/ai/{uuid}/reject`
+- Server-side `build_confirmation_text` (single source of truth, exposed as `suggested_message`; no client duplication)
+- Frontend:
+  - Toggle (AI авто / Вручну / Людина), per dialogue, stored in `localStorage`
+  - AISuggestionPanel (editable text, booking details, approve/reject/regenerate)
+  - Auto-trigger on new inbound (mode=auto), deduplicated across tabs via Web Locks API
+  - Typing bubble «AI аналізує» with animated dots (respects `prefers-reduced-motion`)
+  - Badge «AI» in ChatList for pending suggestions
+  - Bulk fetch pending on inbox mount (20 most recent)
+  - Manual reply rejects the pending AI suggestion on the server (no «ghost» after reload)
+  - Button loading state keeps its accessible name
+- Tests:
+  - Backend: 183 passed + 1 skipped (Ollama integration — runs on PC with Ollama)
+  - E2E: 12/12 Playwright (`npm run test:e2e`): mode toggle, panel, approve/reject, regenerate,
+    close/reopen, manual send, auto-trigger, human mode, typing bubble, booking, two-tab dedup
+- Screenshots: `docs/screenshots/phase3-*.png` (`npm run capture:phase3`)
+
+### Known limitations (to fix in Phase 4+)
+- Auto-trigger runs in the browser (per tab, per admin). If admin closes all tabs → no auto AI. If two admins
+  on different PCs → potential double-trigger. Fix: server-side auto-trigger via scheduler.
+- WebSocket does not push AI suggestion events. Badge in ChatList may be stale across tabs until refresh/open dialogue.
+- New dialogues always start in mode «Вручну» (no global default). Fix: add global default in Settings.
+- Multiple dialogues in «auto» mode can overwhelm Ollama (no queue). Fix: server-side job queue.
+- Suggestion original AI draft is overwritten on approve (edit history not kept). Acceptable for Phase 3.
+- Reject reason not persisted (no column). Fix: add `reject_reason` column.
+- Mock Ollama cannot call `create_appointment` (mock returns only a `get_services` tool call) — e2e seeds a
+  booking suggestion directly. Real Ollama handles it naturally.
+
+### What's next
+- Phase 2.5: Real Meta API (replace MockMetaAdapter, needs Meta App + review)
+- Phase 4: Connect sync (Manager pulls orders/products/clients from Connect API)
+- Phase 5: Analytics (funnels, reports)
+- Phase 6: Marketing (Meta Ads campaigns)
+
 ## What's next (Phase 2.5 / 3)
 
 - Connect v0.3.1: webhook queue in Connect repo
