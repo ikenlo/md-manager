@@ -14,6 +14,14 @@ import app.models  # noqa: E402,F401
 from app.database import Base, _set_sqlite_pragmas, get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.seed import seed_admin, seed_demo  # noqa: E402
+from app.services.rate_limit import limiter  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limit():
+    limiter.reset()
+    yield
+    limiter.reset()
 
 
 @pytest.fixture
@@ -36,7 +44,7 @@ def db_session():
 @pytest.fixture
 def client(db_session):
     app.dependency_overrides[get_db] = lambda: db_session
-    with TestClient(app) as c:
+    with TestClient(app, base_url="http://localhost") as c:
         yield c
     app.dependency_overrides.clear()
 

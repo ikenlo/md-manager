@@ -73,7 +73,7 @@ data/                                   # SQLite (mds.db)
 
 | Метод | Шлях | Опис |
 |---|---|---|
-| POST | `/api/auth/login` | `{email, password}` → `{token, expires_at, user}` |
+| POST | `/api/auth/login` | `{email, password}` → `{token, expires_at, user}`; 5 спроб / 15 хв на IP, далі 429 |
 | GET | `/api/auth/me` | поточний користувач |
 | POST | `/api/auth/logout` | завершити сесію |
 | GET | `/api/dialogues` | фільтри: `status`, `channel`, `tag`, `q`, `limit`, `offset` |
@@ -82,5 +82,91 @@ data/                                   # SQLite (mds.db)
 | POST | `/api/settings` | `{key, value, is_secret}` — значення шифрується Fernet |
 | GET | `/api/settings` | список; секрети повертаються як `null` |
 
-Авторизація: `Authorization: Bearer <token>`. Токен — `secrets.token_urlsafe(48)`, у БД лише SHA-256,
+Авторизація: `Authorization: Bearer <token>`.
+Зміна пароля (завершує всі сесії користувача): `python -m app.set_password admin@mds.local`. Токен — `secrets.token_urlsafe(48)`, у БД лише SHA-256,
 TTL 7 днів. Паролі — bcrypt. Усі часи в БД — UTC (naive datetime на вході → помилка).
+
+## Production Deployment (Cloudflare Tunnel)
+
+Тунель робить Manager доступним з інтернету без відкритих портів на роутері: `cloudflared` на цьому ж
+комп'ютері тримає вихідне з'єднання з Cloudflare і передає запити на `http://localhost:8000`.
+Frontend і API працюють з одного адреса: FastAPI сам віддає зібраний `frontend/dist`.
+
+### Що захищає застосунок
+
+| Захист | Як працює |
+|---|---|
+| Ліміт входу | `POST /api/auth/login` — 5 спроб за 15 хв з одного IP, далі `429` з `Retry-After`. IP береться з `CF-Connecting-IP`, бо за тунелем усі запити приходять з `127.0.0.1` |
+| Перевірка Host | Дозволені лише `localhost`, `127.0.0.1` і домени з `ALLOWED_HOSTS`; інший `Host` → `400` |
+| HTTPS | `APP_ENV=production`: запит по http → `308` на https (схему визначає `X-Forwarded-Proto` від тунелю). Звернення на `localhost` з самої машини не перенаправляються. `/docs` і `/openapi.json` вимкнено |
+| Довіра до заголовків | `CF-Connecting-IP` і `X-Forwarded-Proto` враховуються лише від адрес з `TRUSTED_PROXIES` (типово `127.0.0.1,::1`, тобто cloudflared). Підробити їх ззовні не вийде |
+| Cookie (на майбутнє) | `app/services/cookies.py`: `HttpOnly`, `SameSite=Lax`, `Secure` у production. Зараз сесія — токен у заголовку |
+
+Ліміт зберігається в пам'яті процесу: запускайте **один** процес uvicorn (без `--workers`); після
+перезапуску лічильники обнуляються.
+
+### `.env` для production
+
+```ini
+APP_ENV=production
+ALLOWED_HOSTS=manager.ваш-домен.com
+CORS_ORIGINS=http://localhost:5173,https://manager.ваш-домен.com
+```
+
+- `APP_ENV` — `development` (http і https, `/docs` відкрито) або `production`.
+- `ALLOWED_HOSTS` — точне ім'я домену тунелю без `https://` і без шляху; кілька — через кому.
+  `localhost` і `127.0.0.1` додаються автоматично. Якщо забути домен, сайт відповідатиме `400`
+  (а в журналі при старті буде попередження).
+- `CORS_ORIGINS` — з повною схемою (`https://…`). Для роботи через тунель CORS не потрібен
+  (той самий адрес), але origin домену не завадить.
+
+### 8 кроків
+
+1. **Змінити пароль адміністратора** — після цього `admin` / `admin` перестане працювати:
+   ```powershell
+   cd D:/MDsManager/backend; .venv\Scripts\activate
+   python -m app.set_password admin@mds.local     # щонайменше 12 символів
+   ```
+2. **Зібрати frontend:**
+   ```powershell
+   cd D:/MDsManager/frontend; npm install; npm run build
+   ```
+3. **Налаштувати `D:/MDsManager/backend/.env`** — три рядки вище (`APP_ENV`, `ALLOWED_HOSTS`, `CORS_ORIGINS`),
+   `alembic upgrade head`.
+4. **Запустити backend лише на localhost, без `--reload`:**
+   ```powershell
+   uvicorn app.main:app --host 127.0.0.1 --port 8000
+   ```
+   Не `0.0.0.0`: тоді сервер видно лише через тунель, а не з локальної мережі.
+   Перевірка: `curl http://127.0.0.1:8000/api/health` → `{"status":"ok"}`.
+5. **Встановити cloudflared і увійти в Cloudflare** (домен має бути доданий у ваш акаунт Cloudflare):
+   ```powershell
+   winget install --id Cloudflare.cloudflared
+   cloudflared tunnel login
+   cloudflared tunnel create mds-manager
+   ```
+6. **Описати тунель** у `C:/Users/<ви>/.cloudflared/config.yml` (UUID і шлях до JSON — з виводу `create`):
+   ```yaml
+   tunnel: <UUID>
+   credentials-file: C:/Users/<ви>/.cloudflared/<UUID>.json
+   ingress:
+     - hostname: manager.ваш-домен.com
+       service: http://localhost:8000
+     - service: http_status:404
+   ```
+   і прив'язати домен: `cloudflared tunnel route dns mds-manager manager.ваш-домен.com`.
+   `httpHostHeader` не задавайте: застосунок має бачити справжній домен у `Host`.
+7. **Запустити тунель як службу Windows** (стартує разом із системою):
+   ```powershell
+   cloudflared service install
+   ```
+   Для перевірки без служби: `cloudflared tunnel run mds-manager`.
+   Backend теж варто запускати як службу (наприклад, NSSM) або через Планувальник завдань.
+8. **Перевірити ззовні** (з телефона через мобільний інтернет або з іншої мережі):
+   - `https://manager.ваш-домен.com` відкриває сторінку входу;
+   - `http://manager.ваш-домен.com/api/health` перенаправляє на `https://`;
+   - 6 невдалих входів поспіль → «Забагато спроб входу»;
+   - `https://manager.ваш-домен.com/docs` не показує Swagger.
+
+Додатково (рекомендовано): у панелі Cloudflare увімкнути **SSL/TLS → Always Use HTTPS** і закрити
+домен **Cloudflare Access** (вхід за email-кодом) — тоді до сторінки входу дістануться лише ваші люди.

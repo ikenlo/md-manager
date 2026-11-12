@@ -54,3 +54,17 @@ def test_cors_preflight(client):
         headers={"Origin": "http://localhost:5173", "Access-Control-Request-Method": "POST"},
     )
     assert r.headers["access-control-allow-origin"] == "http://localhost:5173"
+
+
+def test_set_password_changes_login_and_revokes_sessions(client, db_session, auth):
+    from app.set_password import set_password
+
+    assert set_password(db_session, "admin@mds.local", "new-long-password")
+    assert client.get("/api/auth/me", headers=auth).status_code == 401
+    bad = client.post("/api/auth/login", json={"email": "admin@mds.local", "password": "admin"})
+    assert bad.status_code == 401
+    ok = client.post(
+        "/api/auth/login", json={"email": "admin@mds.local", "password": "new-long-password"}
+    )
+    assert ok.status_code == 200
+    assert not set_password(db_session, "nobody@mds.local", "x" * 12)

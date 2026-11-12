@@ -2,10 +2,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import current_user, get_token
+from app.config import get_settings
 from app.database import get_db
 from app.models import User
 from app.schemas.auth import LoginIn, LoginOut, UserOut
 from app.services import auth as auth_service
+from app.services.net import client_ip
+from app.services.rate_limit import limiter
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -15,6 +18,7 @@ def user_out(u: User) -> UserOut:
 
 
 @router.post("/login", response_model=LoginOut)
+@limiter.limit(lambda: get_settings().login_rate_limit)
 def login(body: LoginIn, request: Request, db: Session = Depends(get_db)) -> LoginOut:
     user = auth_service.authenticate(db, body.email, body.password)
     if user is None:
@@ -22,7 +26,7 @@ def login(body: LoginIn, request: Request, db: Session = Depends(get_db)) -> Log
     token, sess = auth_service.create_session(
         db,
         user,
-        request.client.host if request.client else None,
+        client_ip(request),
         request.headers.get("user-agent"),
     )
     return LoginOut(token=token, expires_at=sess.expires_at, user=user_out(user))

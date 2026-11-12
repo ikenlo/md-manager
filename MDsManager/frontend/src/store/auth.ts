@@ -6,7 +6,7 @@ import type { User } from '../types';
 const USER_KEY = 'mds.user';
 const MOCK_TOKEN = 'mock-token';
 
-// Демо-вхід, коли бекенд не запущено (Фаза 1)
+// Демо-вхід, коли бекенд не запущено — лише в `npm run dev`, у зібраній версії вимкнено
 const MOCK_USER: User = {
   uuid: 'mock-admin',
   email: 'admin@mds.local',
@@ -44,7 +44,7 @@ export const useAuth = create<AuthState>((set, get) => ({
       set({ token: res.token, user: res.user, isMock: false });
     } catch (err) {
       const offline = axios.isAxiosError(err) && (!err.response || err.response.status >= 500);
-      if (offline && email.trim().toLowerCase() === MOCK_USER.email && password === 'admin') {
+      if (import.meta.env.DEV && offline && email.trim().toLowerCase() === MOCK_USER.email && password === 'admin') {
         tokenStorage.set(MOCK_TOKEN);
         localStorage.setItem(USER_KEY, JSON.stringify(MOCK_USER));
         set({ token: MOCK_TOKEN, user: MOCK_USER, isMock: true });
@@ -52,6 +52,9 @@ export const useAuth = create<AuthState>((set, get) => ({
       }
       if (axios.isAxiosError(err) && err.response?.status === 401) {
         throw new Error('Невірний email або пароль');
+      }
+      if (axios.isAxiosError(err) && err.response?.status === 429) {
+        throw new Error('Забагато спроб входу. Спробуйте через 15 хвилин');
       }
       if (offline) throw new Error('Сервер недоступний. Спробуйте пізніше');
       throw new Error('Не вдалося увійти');
