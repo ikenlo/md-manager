@@ -56,3 +56,49 @@ export interface LoginResponse {
   expires_at: string;
   user: User;
 }
+
+// --- AI (Phase 3): відповіді /api/dialogues/{uuid}/ai/* — поля snake_case, як у JSON бекенда ---
+
+export type AIIntent = 'booking' | 'question' | 'escalate' | 'unknown';
+
+export type AISuggestionStatus = 'pending' | 'approved' | 'rejected' | 'expired';
+
+export interface AIProposedBooking {
+  tool: string;
+  service_name: string;
+  date: string;
+  time: string;
+  arguments: Record<string, unknown>;
+  result?: Record<string, unknown>;
+}
+
+export interface AISuggestion {
+  uuid: string;
+  dialogue_uuid: string;
+  content: string;
+  intent: AIIntent;
+  proposed_booking: AIProposedBooking | null;
+  status: AISuggestionStatus;
+  created_at: string;
+  resolved_at?: string;
+  resolved_by_user_id?: number;
+}
+
+export interface AIRespondResult {
+  suggestion_uuid: string;
+  content: string;
+  intent: AIIntent;
+  needs_approval: boolean;
+  proposed_booking: AIProposedBooking | null;
+}
+
+export interface AIApproveResult {
+  message_uuid: string;
+  suggestion_uuid: string;
+  status: string;
+}
+
+export interface AIRejectResult {
+  suggestion_uuid: string;
+  status: string;
+}
