@@ -10,6 +10,8 @@ class AIRespondResponse(BaseModel):
     intent: str
     needs_approval: bool
     proposed_booking: dict[str, Any] | None = None
+    # що отримає клієнт після схвалення без правок (для запису — готове підтвердження)
+    suggested_message: str
 
 
 class AISuggestionOut(BaseModel):
@@ -19,6 +21,7 @@ class AISuggestionOut(BaseModel):
     proposed_booking: dict[str, Any] | None = None
     status: str
     created_at: datetime
+    suggested_message: str
 
 
 class AIPendingResponse(BaseModel):
