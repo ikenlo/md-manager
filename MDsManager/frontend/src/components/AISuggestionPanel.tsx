@@ -1,16 +1,15 @@
 import { Bot, CalendarCheck, Check, RefreshCw, X } from 'lucide-react';
 import { useEffect, useId, useState } from 'react';
 import type { AIIntent, AISuggestion } from '../types';
-import { Button, Chip, Field, cn, type ChipVariant } from './ui';
+import { Button, Chip, Field, IconButton, cn, controlClass, type ChipVariant } from './ui';
 
 const MAX_LENGTH = 5000;
 
 const INTENT: Record<AIIntent, { label: string; variant: ChipVariant }> = {
-  booking: { label: 'Запис', variant: 'ordered' },
+  booking: { label: 'Запис', variant: 'ok' },
   question: { label: 'Питання', variant: 'info' },
-  // окремого «warn» у Chip немає — теплий золотий читається як «потрібна увага»
-  escalate: { label: 'Ескалація', variant: 'in_progress' },
-  unknown: { label: '?', variant: 'new' },
+  escalate: { label: 'Ескалація', variant: 'warn' },
+  unknown: { label: '?', variant: 'muted' },
 };
 
 /** «2026-12-01» → «01.12.2026» для картки запису; інше лишається як є. */
@@ -73,34 +72,29 @@ export function AISuggestionPanel({
     <section
       aria-label="Пропозиція AI"
       aria-busy={busy || undefined}
-      className={cn('rounded-xl border border-line bg-surface p-4 shadow-sm', className)}
+      className={cn('rounded-lg border border-line bg-surface p-4 shadow-sm sm:p-[18px]', className)}
     >
       <header className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-gold-tint text-gold">
+          <span className="brand-mark grid h-8 w-8 shrink-0 place-items-center rounded-sm text-[#1a1408]">
             <Bot size={18} aria-hidden="true" />
           </span>
-          <h3 className="truncate font-serif text-lg font-bold text-brand">Пропозиція AI</h3>
+          <h3 className="truncate text-[15px] font-bold text-ink">Пропозиція AI</h3>
         </div>
         <div className="flex shrink-0 items-center gap-1.5">
-          <Chip variant={intent.variant} size="sm" dot>
+          <Chip variant={intent.variant} size="sm">
             {intent.label}
           </Chip>
           {onClose && (
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Сховати пропозицію"
-              className="grid h-8 w-8 place-items-center rounded-sm text-ink-3 transition hover:bg-surface-2 hover:text-ink focus-visible:outline-none focus-visible:shadow-ring"
-            >
+            <IconButton onClick={onClose} aria-label="Сховати пропозицію" className="text-ink-3 hover:text-ink">
               <X size={16} />
-            </button>
+            </IconButton>
           )}
         </div>
       </header>
 
       {booking && (
-        <div className="mt-3 rounded-md border border-gold-soft/50 bg-gold-tint/30 p-3">
+        <div className="mt-3 rounded-md border border-gold/30 bg-gold-tint p-3">
           <div className="flex items-center gap-2 font-semibold text-ink">
             <CalendarCheck size={16} className="shrink-0 text-gold" aria-hidden="true" />
             {booking.service_name}
@@ -124,13 +118,7 @@ export function AISuggestionPanel({
           onChange={(e) => setText(e.target.value)}
           disabled={busy}
           rows={3}
-          className={cn(
-            'min-h-[80px] w-full resize-y rounded-lg border bg-surface-2 p-3 text-base text-ink outline-none md:text-sm',
-            'transition duration-1 ease-ease placeholder:text-ink-3 disabled:cursor-not-allowed disabled:opacity-60',
-            tooLong
-              ? 'border-danger focus:ring-2 focus:ring-danger/20'
-              : 'border-line focus:border-brand focus:ring-2 focus:ring-brand/20',
-          )}
+          className={cn(controlClass(tooLong), 'min-h-[84px] resize-y py-2.5 leading-relaxed')}
         />
       </Field>
       <div
@@ -141,10 +129,10 @@ export function AISuggestionPanel({
         {text.length} / {MAX_LENGTH}
       </div>
 
-      <div className="mt-3 flex flex-wrap justify-end gap-2">
+      <div className="mt-3 flex flex-wrap justify-end gap-2 max-[480px]:[&>button]:flex-1">
         <Button
           type="button"
-          variant="ghost"
+          variant="danger"
           size="sm"
           iconLeft={<X size={14} />}
           loading={isRejecting}

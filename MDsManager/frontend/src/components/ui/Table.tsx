@@ -1,11 +1,12 @@
 import { Inbox } from 'lucide-react';
 import type { KeyboardEvent, ReactNode } from 'react';
 import { cn } from './cn';
+import { EmptyState } from './EmptyState';
 
 export interface TableColumn<T> {
   /** Field of the row to display (also the React key of the column). */
   key: string;
-  /** Header text. */
+  /** Header text (also the label of the value in the mobile card layout). */
   label: ReactNode;
   /** CSS width, e.g. `120` (px) or `'30%'`. */
   width?: number | string;
@@ -41,16 +42,11 @@ function cellValue(v: unknown): ReactNode {
   return String(v);
 }
 
+const textOf = (n: ReactNode) => (typeof n === 'string' || typeof n === 'number' ? String(n) : undefined);
+
 /**
- * Data table in the MDS Connect style (`.card.table-wrap`): sticky header,
- * hover rows, empty state. Scrolls horizontally when it does not fit.
- *
- * @example
- * <Table
- *   columns={[{ key: 'name', label: 'Клієнт' }, { key: 'total', label: 'Сума', align: 'right', render: (r) => money(r.total) }]}
- *   data={clients}
- *   onRowClick={(c) => openClient(c.uuid)}
- * />
+ * Data table in the MDS Connect style (`.card.table-wrap`): uppercase sticky header, hover rows,
+ * empty state. ≤640px it turns into a list of cards with «label: value» lines (Connect `table.resp`).
  */
 export function Table<T extends Record<string, unknown>>({
   columns,
@@ -68,8 +64,8 @@ export function Table<T extends Record<string, unknown>>({
   };
 
   return (
-    <div className={cn('overflow-x-auto rounded-xl border border-line bg-surface shadow-sm', className)}>
-      <table className="w-full border-collapse text-sm">
+    <div className={cn('overflow-x-auto rounded-xl border border-line bg-surface py-1 shadow-sm', className)}>
+      <table className="table-resp w-full border-collapse text-sm">
         <thead>
           <tr>
             {columns.map((c) => (
@@ -78,7 +74,8 @@ export function Table<T extends Record<string, unknown>>({
                 scope="col"
                 style={c.width !== undefined ? { width: c.width } : undefined}
                 className={cn(
-                  'sticky top-0 z-[1] whitespace-nowrap border-b border-line bg-surface-2 px-3.5 py-2.5 text-xs font-semibold text-ink-2',
+                  'sticky top-0 z-[1] whitespace-nowrap border-b border-line bg-surface-2 px-3.5 py-2.5',
+                  'text-2xs font-bold uppercase tracking-[.06em] text-ink-3',
                   ALIGN[c.align ?? 'left'],
                 )}
               >
@@ -87,16 +84,11 @@ export function Table<T extends Record<string, unknown>>({
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-line">
+        <tbody>
           {data.length === 0 ? (
             <tr>
-              <td colSpan={columns.length} className="px-3 py-10">
-                <div className="flex flex-col items-center gap-3 text-center text-ink-3">
-                  <span className="grid h-[52px] w-[52px] place-items-center rounded-full bg-surface-2 ring-1 ring-inset ring-line">
-                    <Inbox size={24} strokeWidth={1.6} aria-hidden="true" />
-                  </span>
-                  <span className="text-sm">{emptyText}</span>
-                </div>
+              <td colSpan={columns.length}>
+                <EmptyState icon={<Inbox size={24} strokeWidth={1.6} aria-hidden="true" />}>{emptyText}</EmptyState>
               </td>
             </tr>
           ) : (
@@ -107,17 +99,19 @@ export function Table<T extends Record<string, unknown>>({
                 onKeyDown={onRowClick ? (e) => onKey(e, row, i) : undefined}
                 tabIndex={onRowClick ? 0 : undefined}
                 className={cn(
-                  'transition-colors duration-1 hover:bg-surface-2',
+                  'transition-colors duration-1 hover:bg-surface-2 [&:last-child>td]:border-b-0',
                   onRowClick && 'cursor-pointer focus-visible:bg-surface-2 focus-visible:outline-none',
                 )}
               >
-                {columns.map((c) => (
+                {columns.map((c, ci) => (
                   <td
                     key={c.key}
+                    data-label={textOf(c.label)}
                     className={cn(
-                      'px-3.5 py-2.5 align-middle text-ink',
+                      'border-b border-line px-3.5 py-2.5 align-middle text-ink',
                       ALIGN[c.align ?? 'left'],
                       c.align === 'right' && 'whitespace-nowrap tabular-nums',
+                      ci === 0 && 'resp-title',
                     )}
                   >
                     {c.render ? c.render(row, i) : cellValue(row[c.key])}

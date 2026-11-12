@@ -1,42 +1,55 @@
 import type { HTMLAttributes } from 'react';
 import { cn } from './cn';
 
-export type ChipVariant = 'new' | 'in_progress' | 'ordered' | 'lost' | 'info';
+export type ChipVariant =
+  | 'new'
+  | 'in_progress'
+  | 'ordered'
+  | 'lost'
+  | 'info'
+  | 'ok'
+  | 'warn'
+  | 'danger'
+  | 'prog'
+  | 'muted'
+  | 'gold';
 export type ChipSize = 'sm' | 'md';
 
 export interface ChipProps extends HTMLAttributes<HTMLSpanElement> {
-  /** Colour scheme. The first four match `DialogueStatus`, so `<Chip variant={d.status}>` works. */
+  /** Colour scheme. `new | in_progress | ordered | lost` match `DialogueStatus`, so `<Chip variant={d.status}>` works. */
   variant?: ChipVariant;
   /** Defaults to `md`. */
   size?: ChipSize;
-  /** Coloured dot before the text (MDS Connect `.chip::before`). */
+  /** Coloured dot before the text (MDS Connect `.chip::before`). Defaults to true; `false` = `.chip.plain`. */
   dot?: boolean;
 }
 
+// Семантика як у Connect (.st-*): нове — info, в роботі — prog, записано — ok, втрачено — muted
 const VARIANTS: Record<ChipVariant, string> = {
-  new: 'bg-surface-2 text-ink-2',
-  in_progress: 'bg-gold-tint text-gold',
-  ordered: 'bg-ok/10 text-ok',
-  lost: 'bg-danger/10 text-danger',
-  info: 'bg-info/10 text-info',
+  new: 'bg-info-bg text-info',
+  in_progress: 'bg-prog-bg text-prog',
+  ordered: 'bg-ok-bg text-ok',
+  lost: 'bg-muted-bg text-ink-3',
+  info: 'bg-info-bg text-info',
+  ok: 'bg-ok-bg text-ok',
+  warn: 'bg-warn-bg text-warn',
+  danger: 'bg-danger-bg text-danger',
+  prog: 'bg-prog-bg text-prog',
+  muted: 'bg-muted-bg text-ink-2',
+  gold: 'bg-gold-tint text-gold',
 };
 
 const SIZES: Record<ChipSize, string> = {
-  sm: 'text-[10px] px-2 py-0.5 gap-1',
-  md: 'text-xs px-2.5 py-1 gap-1.5',
+  sm: 'min-h-5 px-2 text-[10.5px] gap-1',
+  md: 'min-h-[22px] px-[9px] text-xs gap-1.5',
 };
 
-/**
- * Status pill (MDS Connect `.chip`).
- *
- * @example
- * <Chip variant={dialogue.status} dot>{STATUS_LABEL[dialogue.status]}</Chip>
- */
-export function Chip({ variant = 'new', size = 'md', dot = false, className, children, ...rest }: ChipProps) {
+/** Status pill (MDS Connect `.chip` / `.st-*`). */
+export function Chip({ variant = 'muted', size = 'md', dot = true, className, children, ...rest }: ChipProps) {
   return (
     <span
       className={cn(
-        'inline-flex max-w-full items-center whitespace-nowrap rounded-pill font-semibold leading-4',
+        'inline-flex max-w-full items-center whitespace-nowrap rounded-pill font-bold leading-none',
         VARIANTS[variant],
         SIZES[size],
         className,

@@ -116,20 +116,144 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Токени MDS Connect як RGB-канали (для Tailwind-модифікаторів прозорості).
+ * Світла тема — :root; темна — :root[data-theme="dark"] (перемикач у сайдбарі, як у Connect).
+ */
 @layer base {
+  :root {
+    --brand: 20 57 44;
+    --brand-2: 29 77 59;
+    --brand-ink: 245 241 230;
+    --gold: 180 138 62;
+    --gold-soft: 232 212 166;
+    --gold-tint: 247 239 220;
+
+    --bg: 244 243 238;
+    --surface: 255 255 255;
+    --surface-2: 248 247 243;
+    --surface-3: 239 237 230;
+    --ink: 35 38 43;
+    --ink-2: 75 80 88;
+    --ink-3: 134 139 147;
+    --line: 228 225 216;
+    --line-strong: 211 207 195;
+
+    --ok: 31 138 91;
+    --ok-bg: 229 244 236;
+    --warn: 183 121 31;
+    --warn-bg: 251 240 220;
+    --danger: 194 69 61;
+    --danger-bg: 251 231 229;
+    --info: 47 111 179;
+    --info-bg: 230 238 248;
+    --prog: 124 77 204;
+    --prog-bg: 240 234 251;
+    --muted-bg: 238 237 232;
+
+    --shadow-sm: 0 1px 2px rgba(20, 30, 25, 0.06);
+    --shadow: 0 1px 2px rgba(20, 30, 25, 0.04), 0 4px 18px rgba(20, 30, 25, 0.07);
+    --shadow-lg: 0 18px 50px rgba(15, 25, 20, 0.18);
+    color-scheme: light;
+  }
+
+  :root[data-theme='dark'] {
+    --bg: 11 26 21;
+    --surface: 17 36 29;
+    --surface-2: 20 43 35;
+    --surface-3: 26 53 43;
+    --ink: 238 234 224;
+    --ink-2: 196 192 181;
+    --ink-3: 140 137 127;
+    --line: 35 66 54;
+    --line-strong: 45 82 66;
+    --gold: 210 171 95;
+    /* rgba(…, .14–.22) з Connect, змішані з поверхнею — суцільні кольори для Tailwind */
+    --gold-tint: 44 55 38;
+    --ok: 111 208 160;
+    --ok-bg: 20 54 40;
+    --warn: 232 182 96;
+    --warn-bg: 50 53 29;
+    --danger: 239 141 132;
+    --danger-bg: 52 43 35;
+    --info: 143 193 245;
+    --info-bg: 23 51 59;
+    --prog: 195 166 245;
+    --prog-bg: 41 45 68;
+    --muted-bg: 31 49 43;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+    --shadow-lg: 0 18px 50px rgba(0, 0, 0, 0.55);
+    color-scheme: dark;
+  }
+
   html,
   body,
   #root {
     @apply h-full;
   }
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    touch-action: manipulation;
+  }
   body {
-    @apply bg-bg font-sans text-ink antialiased;
+    @apply bg-bg font-sans text-sm text-ink antialiased;
+    line-height: 1.45;
+  }
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  ::placeholder {
+    @apply text-ink-3;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
   }
 }
 
 @layer components {
   .scroll-thin {
     scrollbar-width: thin;
-    scrollbar-color: #d9d5c8 transparent;
+    scrollbar-color: rgb(var(--line-strong)) transparent;
+  }
+  /* Каскадна поява блоків сторінки (Connect: .main > * { animation: rise-in }) */
+  .anim-in > * {
+    animation: rise-in 0.32s cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  }
+  .anim-in > :nth-child(2) { animation-delay: 0.03s; }
+  .anim-in > :nth-child(3) { animation-delay: 0.06s; }
+  .anim-in > :nth-child(4) { animation-delay: 0.09s; }
+  .anim-in > :nth-child(n + 5) { animation-delay: 0.12s; }
+  /* Таблиця ≤640px → картки «підпис: значення» (Connect table.resp) */
+  @media (max-width: 640px) {
+    .table-resp,
+    .table-resp tbody { display: block; }
+    .table-resp thead { display: none; }
+    .table-resp tr { display: block; padding: 12px 16px; border-bottom: 1px solid rgb(var(--line)); }
+    .table-resp tr:last-child { border-bottom: 0; }
+    .table-resp td {
+      display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+      padding: 3px 0 !important; border: 0 !important; text-align: right; font-size: 13px;
+    }
+    .table-resp td[data-label]::before { content: attr(data-label); color: rgb(var(--ink-3)); font-weight: 500; text-align: left; flex-shrink: 0; }
+    .table-resp td.resp-title { justify-content: flex-start; text-align: left; font-size: 15px; font-weight: 700; padding-bottom: 6px !important; }
+    .table-resp td.resp-title::before { content: none; }
+    .table-resp td[colspan] { display: block; }
+  }
+  /* Золоте лого-плашка M&D (Connect .brand-mark) */
+  .brand-mark {
+    background: linear-gradient(145deg, #d8b46a, #a9823b);
+    color: #1a1408;
   }
 }

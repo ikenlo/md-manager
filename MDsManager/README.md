@@ -115,7 +115,7 @@ npm run test:e2e
 The tests start their own backend (`e2e/backend.py`, clean temp DB, mock Meta/Ollama) on ports 8765/5199;
 Python is taken from `E2E_PYTHON` (default `python` — activate the backend venv first).
 
-Screenshots: `docs/screenshots/phase3-*.png` (regenerate: `npm run capture:phase3`).
+Screenshots: `docs/screenshots/phase3-*.png` (regenerate: `npm run capture`).
 
 ## Перевірки
 
@@ -289,3 +289,19 @@ Demo page (dev only): `npm run dev` → http://localhost:5173/_demo
 Підсумок змін і обмеження — [docs/REWRITE_SUMMARY.md](docs/REWRITE_SUMMARY.md).
 
 Next: Phase 2 (real channels via Connect webhook queue)
+
+## Дизайн — як у MDS Connect (обов'язково)
+
+Увесь інтерфейс MDs Manager тримається вигляду MDS Connect (`ikenlo/m-d`, `server/mds/web/static/style.css`).
+Нові екрани робимо лише з цих частин, без власних кольорів і шрифтів:
+
+- **Токени** — CSS-змінні в `frontend/src/index.css` (`:root` світла, `[data-theme="dark"]` темна), у Tailwind як
+  `bg-surface`, `text-ink-2`, `border-line`, `bg-ok-bg text-ok` тощо. Hex у класах — лише для бренду (сайдбар, знак M&D).
+- **Тема** — `lib/theme.ts` (`useTheme`, `setTheme`, `toggleTheme`), зберігається в `localStorage.mds_theme`.
+- **Каркас** — `layout/`: `Sidebar` (групи «Робота / AI / Маркетинг / Салон»), на ≤900px `MobileBar` + плаваючий `TabBar`;
+  пункти меню — `lib/nav.ts`. Сторінка — `<PageContainer>` + `<Topbar title sub actions>`.
+- **Компоненти** — `components/ui`: Button / IconButton, Input (`controlClass` для textarea/select), Seg (сегменти),
+  Chip (статуси `.st-*`), Card / CardHead, EmptyState, Table (на телефоні — картки), Sheet, Toast, Skeleton, Avatar.
+- **Типографіка** — Manrope скрізь; Cormorant лише для назви бренду. Заголовки сторінок — 24px bold.
+
+Знімки всіх сторінок (світла/темна, ПК/телефон): `docs/screenshots/redesign-*.png`, перезняти — `cd frontend; npm run capture`.

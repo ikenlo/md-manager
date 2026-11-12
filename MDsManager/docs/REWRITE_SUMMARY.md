@@ -144,7 +144,7 @@
   - Backend: 183 passed + 1 skipped (Ollama integration — runs on PC with Ollama)
   - E2E: 12/12 Playwright (`npm run test:e2e`): mode toggle, panel, approve/reject, regenerate,
     close/reopen, manual send, auto-trigger, human mode, typing bubble, booking, two-tab dedup
-- Screenshots: `docs/screenshots/phase3-*.png` (`npm run capture:phase3`)
+- Screenshots: `docs/screenshots/phase3-*.png` (`npm run capture`)
 
 ### Known limitations (to fix in Phase 4+)
 - Auto-trigger runs in the browser (per tab, per admin). If admin closes all tabs → no auto AI. If two admins

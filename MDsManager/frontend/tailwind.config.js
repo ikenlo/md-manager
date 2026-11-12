@@ -1,23 +1,28 @@
 /** @type {import('tailwindcss').Config} */
-// Токени 1-в-1 з MDS Connect (style.css :root) — див. docs/CONNECT_DESIGN_AUDIT.md
+// Токени MDS Connect (style.css :root і :root[data-theme="dark"]) — значення в src/index.css як RGB-канали,
+// щоб працювали модифікатори прозорості (bg-brand/5). Див. docs/CONNECT_DESIGN_AUDIT.md.
+const c = (name) => `rgb(var(--${name}) / <alpha-value>)`;
+
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
+  // темна тема — як у Connect: <html data-theme="dark">
+  darkMode: ['selector', '[data-theme="dark"]'],
   theme: {
     extend: {
       colors: {
-        brand: { DEFAULT: '#14392c', 2: '#1d4d3b', ink: '#f5f1e6' },
-        gold: { DEFAULT: '#b48a3e', soft: '#e8d4a6', tint: '#f7efdc' },
-        bg: '#f4f3ee',
-        surface: { DEFAULT: '#ffffff', 2: '#f8f7f3', 3: '#efede6' },
-        ink: { DEFAULT: '#23262b', 2: '#4b5058', 3: '#868b93' },
-        line: { DEFAULT: '#e4e1d8', strong: '#d3cfc3' },
-        focus: 'rgba(180, 138, 62, .35)',
-        ok: { DEFAULT: '#1f8a5b', bg: '#e5f4ec' },
-        warn: { DEFAULT: '#b7791f', bg: '#fbf0dc' },
-        danger: { DEFAULT: '#c2453d', bg: '#fbe7e5' },
-        info: { DEFAULT: '#2f6fb3', bg: '#e6eef8' },
-        prog: { DEFAULT: '#7c4dcc', bg: '#f0eafb' },
-        muted: { bg: '#eeede8' },
+        brand: { DEFAULT: c('brand'), 2: c('brand-2'), ink: c('brand-ink') },
+        gold: { DEFAULT: c('gold'), soft: c('gold-soft'), tint: c('gold-tint') },
+        bg: c('bg'),
+        surface: { DEFAULT: c('surface'), 2: c('surface-2'), 3: c('surface-3') },
+        ink: { DEFAULT: c('ink'), 2: c('ink-2'), 3: c('ink-3') },
+        line: { DEFAULT: c('line'), strong: c('line-strong') },
+        focus: 'rgb(var(--gold) / .35)',
+        ok: { DEFAULT: c('ok'), bg: c('ok-bg') },
+        warn: { DEFAULT: c('warn'), bg: c('warn-bg') },
+        danger: { DEFAULT: c('danger'), bg: c('danger-bg') },
+        info: { DEFAULT: c('info'), bg: c('info-bg') },
+        prog: { DEFAULT: c('prog'), bg: c('prog-bg') },
+        muted: { bg: c('muted-bg') },
       },
       fontFamily: {
         sans: ['Manrope', 'system-ui', '-apple-system', '"Segoe UI"', 'Roboto', 'sans-serif'],
@@ -36,11 +41,11 @@ export default {
         pill: '999px',
       },
       boxShadow: {
-        sm: '0 1px 2px rgba(20, 30, 25, .06)',
-        DEFAULT: '0 1px 2px rgba(20, 30, 25, .04), 0 4px 18px rgba(20, 30, 25, .07)',
-        lg: '0 18px 50px rgba(15, 25, 20, .18)',
-        ring: '0 0 0 3px rgba(180, 138, 62, .35)',
-        card: '0 1px 2px rgba(20, 30, 25, .04), 0 4px 18px rgba(20, 30, 25, .07)',
+        sm: 'var(--shadow-sm)',
+        DEFAULT: 'var(--shadow)',
+        lg: 'var(--shadow-lg)',
+        ring: '0 0 0 3px rgb(var(--gold) / .35)',
+        card: 'var(--shadow)',
       },
       transitionTimingFunction: {
         ease: 'cubic-bezier(.2, .7, .2, 1)',
@@ -49,6 +54,22 @@ export default {
         1: '120ms',
         2: '200ms',
         3: '320ms',
+      },
+      keyframes: {
+        'rise-in': { from: { opacity: '0', transform: 'translateY(10px)' } },
+        fade: { from: { opacity: '0' } },
+        pop: { '0%': { transform: 'scale(.85)' }, '60%': { transform: 'scale(1.08)' }, '100%': { transform: 'scale(1)' } },
+        shimmer: { from: { backgroundPosition: '-200% 0' }, to: { backgroundPosition: '200% 0' } },
+        shake: { '20%, 60%': { transform: 'translateX(-7px)' }, '40%, 80%': { transform: 'translateX(7px)' } },
+        'mark-in': { from: { opacity: '0', transform: 'scale(.8) rotate(-8deg)' } },
+      },
+      animation: {
+        'rise-in': 'rise-in .32s cubic-bezier(.2, .7, .3, 1) both',
+        fade: 'fade 200ms cubic-bezier(.2, .7, .2, 1)',
+        pop: 'pop .3s ease-out',
+        shimmer: 'shimmer 1.2s linear infinite',
+        shake: 'shake .4s',
+        'mark-in': 'mark-in .7s cubic-bezier(.2, .7, .3, 1) both',
       },
       // spacing: шкала Connect (4/8/12/16/20/24/32/40) збігається з типовою шкалою Tailwind (1–10)
     },

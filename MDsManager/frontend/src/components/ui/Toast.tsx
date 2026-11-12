@@ -4,10 +4,11 @@ import { useToastStore, type ToastItem, type ToastType } from '../../store/toast
 import { cn } from './cn';
 
 const STYLE: Record<ToastType, { cls: string; Icon: LucideIcon }> = {
-  success: { cls: 'bg-ok', Icon: CheckCircle },
-  error: { cls: 'bg-danger', Icon: AlertCircle },
-  warning: { cls: 'bg-warn', Icon: AlertTriangle },
-  info: { cls: 'bg-info', Icon: Info },
+  // Connect .toast: темна плашка (bg ink, текст surface); .toast.err — червона
+  success: { cls: 'bg-ink text-surface', Icon: CheckCircle },
+  error: { cls: 'bg-danger text-white', Icon: AlertCircle },
+  warning: { cls: 'bg-ink text-surface', Icon: AlertTriangle },
+  info: { cls: 'bg-ink text-surface', Icon: Info },
 };
 
 function ToastView({ item, onClose }: { item: ToastItem; onClose: () => void }) {
@@ -25,7 +26,7 @@ function ToastView({ item, onClose }: { item: ToastItem; onClose: () => void }) 
     <div
       role={urgent ? 'alert' : 'status'}
       className={cn(
-        'pointer-events-auto flex w-full items-start gap-2.5 rounded-lg py-3 pl-4 pr-2 text-sm font-semibold text-white shadow-lg',
+        'pointer-events-auto flex w-full items-start gap-2.5 rounded-lg py-3 pl-4 pr-2 text-sm font-semibold shadow-lg',
         'transition duration-200 ease-ease motion-reduce:transition-none',
         shown ? 'translate-y-0 opacity-100' : '-translate-y-2 opacity-0',
         cls,
@@ -37,7 +38,7 @@ function ToastView({ item, onClose }: { item: ToastItem; onClose: () => void }) 
         type="button"
         onClick={onClose}
         aria-label="Закрити повідомлення"
-        className="-my-1 shrink-0 rounded-sm p-1 text-white/80 transition hover:bg-white/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/60"
+        className="-my-1 shrink-0 rounded-sm p-1 opacity-70 transition hover:bg-[rgba(127,127,127,.2)] hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-current"
       >
         <X size={16} />
       </button>
@@ -60,8 +61,8 @@ export function ToastContainer() {
       aria-live="polite"
       className={cn(
         'pointer-events-none fixed z-[100] flex flex-col gap-2',
-        'left-1/2 top-4 w-[calc(100vw-32px)] max-w-[420px] -translate-x-1/2',
-        'min-[900px]:left-auto min-[900px]:right-4 min-[900px]:w-[380px] min-[900px]:translate-x-0',
+        'bottom-[calc(90px+env(safe-area-inset-bottom))] left-4 right-4 flex-col-reverse',
+        'min-[601px]:bottom-auto min-[601px]:left-auto min-[601px]:right-5 min-[601px]:top-[18px] min-[601px]:w-[min(420px,calc(100vw-32px))] min-[601px]:flex-col',
       )}
     >
       {toasts.map((t) => (

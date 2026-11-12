@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -b",
     "test:e2e": "playwright test --grep-invert @screenshots",
-    "capture:phase3": "playwright test --grep @screenshots"
+    "capture": "playwright test --grep @screenshots"
   },
   "dependencies": {
     "axios": "1.7.9",

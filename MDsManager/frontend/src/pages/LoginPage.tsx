@@ -1,9 +1,9 @@
 import axios from 'axios';
-import { AlertCircle, ArrowRight, Lock, User } from 'lucide-react';
+import { AlertCircle, ArrowRight, Eye, EyeOff, Lock, User } from 'lucide-react';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { loginRequest } from '../api/client';
-import { Button, Input } from '../components/ui';
+import { Button, Input, cn } from '../components/ui';
 import { parseExpiry, selectIsAuthenticated, useAuthStore } from '../store/auth';
 import type { User as AppUser } from '../types';
 
@@ -44,6 +44,9 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [lockedFor, setLockedFor] = useState(0); // секунд до зняття ліміту 429
+  const [showPass, setShowPass] = useState(false);
+  const [caps, setCaps] = useState(false);
+  const [shake, setShake] = useState(0); // лічильник: кожна помилка — новий «струс» картки
   const passRef = useRef<HTMLInputElement>(null);
   const idRef = useRef<HTMLInputElement>(null);
 
@@ -97,6 +100,7 @@ export default function LoginPage() {
       else if (offline) setError('Сервер недоступний. Спробуйте пізніше');
       else setError('Не вдалося увійти');
       setPassword('');
+      setShake((n) => n + 1);
       passRef.current?.focus();
     } finally {
       setBusy(false);
@@ -106,58 +110,81 @@ export default function LoginPage() {
   const message =
     lockedFor > 0 ? `Забагато спроб. Спробуйте через 15 хвилин (залишилось ${minutesLabel(lockedFor)}).` : error;
 
+  const labelCls = '[&_label]:text-xs [&_label]:font-semibold [&_label]:uppercase [&_label]:tracking-[.06em] [&_label]:text-ink-3';
+
   return (
-    <div className="relative flex min-h-full items-center justify-center overflow-hidden bg-bg px-4 py-10 sm:px-6">
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(900px_480px_at_85%_-10%,rgba(180,138,62,.14),transparent_60%),radial-gradient(700px_420px_at_0%_110%,rgba(20,57,44,.10),transparent_60%)]"
-      />
+    <div className="relative flex min-h-full flex-col items-center justify-center gap-[18px] overflow-hidden bg-bg bg-[radial-gradient(900px_480px_at_85%_-10%,rgba(180,138,62,.14),transparent_60%),radial-gradient(700px_420px_at_0%_110%,rgba(20,57,44,.10),transparent_60%)] px-4 py-6 pb-[calc(24px+env(safe-area-inset-bottom))] dark:bg-[radial-gradient(900px_480px_at_85%_-10%,rgba(210,171,95,.12),transparent_60%),radial-gradient(700px_420px_at_0%_110%,rgba(20,57,44,.35),transparent_60%)]">
       <main className="relative w-full max-w-[400px]">
-        <div className="relative overflow-hidden rounded-xl border border-line bg-surface px-6 pb-7 pt-9 shadow-lg sm:px-8">
-          <div aria-hidden="true" className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-brand via-gold to-brand" />
+        <div
+          key={shake}
+          className={cn(
+            'relative overflow-hidden rounded-xl border border-line bg-surface px-7 pb-[26px] pt-[34px] text-center shadow-lg max-[380px]:px-[18px]',
+            shake ? 'animate-shake' : 'animate-rise-in',
+          )}
+        >
+          <div aria-hidden="true" className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand via-gold to-brand" />
 
-          <div className="text-center">
-            <div
-              aria-hidden="true"
-              className="mx-auto mb-4 grid h-[66px] w-[66px] place-items-center rounded-xl bg-gradient-to-br from-[#d8b46a] to-[#a9823b] font-serif text-[22px] font-semibold text-[#1a1408] shadow-[0_0_0_6px_theme(colors.gold.tint),0_10px_28px_rgba(180,138,62,.3)]"
-            >
-              M&amp;D
-            </div>
-            <h1 className="font-serif text-[34px] font-semibold leading-none text-brand">M&amp;D</h1>
-            <div className="mt-2 text-2xs font-semibold uppercase tracking-[0.24em] text-ink-3">MDs Manager</div>
-            <p className="mt-5 text-sm text-ink-2">Увійдіть у систему</p>
+          <div
+            aria-hidden="true"
+            className="mx-auto mb-3.5 grid h-[66px] w-[66px] animate-mark-in place-items-center rounded-xl bg-gradient-to-br from-[#d8b46a] to-[#a9823b] font-serif text-[22px] font-semibold text-[#1a1408] shadow-[0_0_0_6px_rgb(var(--gold-tint)),0_10px_28px_rgba(180,138,62,.3)]"
+          >
+            M&amp;D
           </div>
+          <h1 className="font-serif text-[30px] font-semibold leading-[1.1] text-brand dark:text-gold">MDs Manager</h1>
+          <div className="mb-6 mt-1.5 text-2xs font-semibold uppercase tracking-[0.2em] text-ink-3">Салон M&amp;D · AI-адміністратор</div>
 
-          <form onSubmit={submit} noValidate className="mt-6 flex flex-col gap-4">
+          <form onSubmit={submit} noValidate className={cn('flex flex-col gap-3 text-left', labelCls)}>
             <Input
               ref={idRef}
-              label="Логін або Email"
+              label="Логін"
               name="identifier"
               autoComplete="username"
               autoCapitalize="none"
               spellCheck={false}
-              placeholder="admin"
+              placeholder="Ваш логін MDS Connect"
               iconLeft={<User size={16} />}
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
+              inputClassName="min-h-12"
               required
             />
             <Input
               ref={passRef}
               label="Пароль"
               name="password"
-              type="password"
+              type={showPass ? 'text' : 'password'}
               autoComplete="current-password"
+              placeholder="••••••••"
               iconLeft={<Lock size={16} />}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
+              onKeyUp={(e) => setCaps(e.getModifierState?.('CapsLock') ?? false)}
+              inputClassName="min-h-12"
+              trailing={
+                <button
+                  type="button"
+                  onClick={() => setShowPass((v) => !v)}
+                  aria-label={showPass ? 'Сховати пароль' : 'Показати пароль'}
+                  aria-pressed={showPass}
+                  className="grid h-9 w-9 place-items-center rounded-sm text-ink-3 transition duration-1 hover:bg-surface-3 hover:text-brand-2 focus-visible:outline-none focus-visible:shadow-ring"
+                >
+                  {showPass ? <EyeOff size={17} /> : <Eye size={17} />}
+                </button>
+              }
               required
             />
+
+            {caps && (
+              <div className="flex items-center gap-1.5 text-[13px] font-semibold text-warn">
+                <AlertCircle size={14} aria-hidden="true" />
+                Увімкнено Caps Lock
+              </div>
+            )}
 
             {message && (
               <div
                 role="alert"
-                className="flex items-start gap-2 rounded-md border border-danger/30 bg-danger-bg px-3 py-2 text-sm text-danger"
+                className="flex animate-rise-in items-start gap-2 rounded-md border border-danger/30 bg-danger-bg px-3 py-2 text-[13px] text-danger"
               >
                 <AlertCircle size={16} className="mt-0.5 shrink-0" aria-hidden="true" />
                 <span>{message}</span>
@@ -171,17 +198,17 @@ export default function LoginPage() {
               loading={busy}
               disabled={lockedFor > 0}
               iconRight={<ArrowRight size={16} />}
-              className="mt-1"
+              className="mt-1.5"
             >
               Увійти
             </Button>
           </form>
         </div>
-        <p className="mt-5 flex items-center justify-center gap-1.5 text-center text-xs text-ink-3">
-          <Lock size={12} aria-hidden="true" />
-          Салон краси M&amp;D · доступ лише для персоналу
-        </p>
       </main>
+      <p className="flex flex-col items-center gap-1 text-center text-xs text-ink-3">
+        <Lock size={14} aria-hidden="true" />
+        Вхід тим самим логіном, що й у MDS Connect
+      </p>
     </div>
   );
 }
